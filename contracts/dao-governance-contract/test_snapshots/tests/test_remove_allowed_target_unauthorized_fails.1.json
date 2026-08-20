@@ -25,7 +25,6 @@
     ],
     [],
     [],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
@@ -39,10 +38,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "symbol": "fn"
+                  "symbol": "f"
                 }
               ]
             }
@@ -167,10 +166,10 @@
                   "symbol": "AllowedTarget"
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "symbol": "fn"
+                  "symbol": "f"
                 }
               ]
             },
@@ -190,10 +189,10 @@
                       "symbol": "AllowedTarget"
                     },
                     {
-                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                     },
                     {
-                      "symbol": "fn"
+                      "symbol": "f"
                     }
                   ]
                 },
@@ -710,97 +709,6 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000004"
               },
               {
-                "symbol": "get_config"
-              }
-            ],
-            "data": "void"
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000004",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "get_config"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "dao_admin"
-                  },
-                  "val": {
-                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "gp_token"
-                  },
-                  "val": {
-                    "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "quorum"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 1000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timelock_ledgers"
-                  },
-                  "val": {
-                    "u32": 10000
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "voting_period_ledgers"
-                  },
-                  "val": {
-                    "u32": 121000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000004"
-              },
-              {
                 "symbol": "add_allowed_target"
               }
             ],
@@ -810,10 +718,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "symbol": "fn"
+                  "symbol": "f"
                 }
               ]
             }
@@ -837,10 +745,10 @@
             "data": {
               "vec": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "symbol": "fn"
+                  "symbol": "f"
                 }
               ]
             }
@@ -885,28 +793,19 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000004"
               },
               {
-                "symbol": "create_proposal"
+                "symbol": "remove_allowed_target"
               }
             ],
             "data": {
               "vec": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
-                },
-                {
-                  "string": "Test"
-                },
-                {
-                  "string": "Desc"
-                },
-                {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                 },
                 {
-                  "symbol": "fn"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "bytes": "010203"
+                  "symbol": "f"
                 }
               ]
             }
@@ -930,25 +829,16 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'insufficient voting power to propose' from contract function 'Symbol(obj#209)'"
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
-                },
-                {
-                  "string": "Test"
-                },
-                {
-                  "string": "Desc"
+                  "string": "caught panic 'not authorised to modify allowlist' from contract function 'Symbol(obj#173)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                 },
                 {
-                  "symbol": "fn"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "bytes": "010203"
+                  "symbol": "f"
                 }
               ]
             }
@@ -1005,27 +895,18 @@
                   "string": "contract call failed"
                 },
                 {
-                  "symbol": "create_proposal"
+                  "symbol": "remove_allowed_target"
                 },
                 {
                   "vec": [
                     {
-                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
-                    },
-                    {
-                      "string": "Test"
-                    },
-                    {
-                      "string": "Desc"
-                    },
-                    {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                     },
                     {
-                      "symbol": "fn"
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                     },
                     {
-                      "bytes": "010203"
+                      "symbol": "f"
                     }
                   ]
                 }
