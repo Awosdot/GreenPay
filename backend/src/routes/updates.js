@@ -2,20 +2,49 @@
  * src/routes/updates.js
  * GET  /api/updates/:projectId        — list updates for a project
  * POST /api/updates                   — create update + notify subscribers (admin)
+ * POST /api/updates/:updateId/like — toggle like
+ * GET  /api/updates/:updateId/likes — get like count and user's like status
+ *
+ * Rate limiters prevent admin update spam and like enumeration/spam.
  */
 "use strict";
 const express = require("express");
 const router  = express.Router();
 const { v4: uuidv4 } = require("uuid");
 const pool = require("../db/pool");
+const { createRateLimiter } = require("../middleware/rateLimiter");
 const { mapProjectUpdateRow, mapProjectRow } = require("../services/store");
 const { sendUpdateNotifications } = require("../services/email");
 const { sendUpdatePushNotifications } = require("../services/push");
 
 const { adminRequired } = require("../middleware/auth");
 
+// Rate limiter for admin update creation
+// Prevents admin update spam: 5 updates per admin per hour
+const updateCreationLimiter = createRateLimiter(5, 60);
+
+// Rate limiter for like operations per donor
+// Prevents like enumeration/spam: 20 likes per donor per hour
+const likeLimiter = createRateLimiter(20, 1);
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// GET /api/updates/:projectId — list updates for a project, newest first
+router.get("/:projectId", async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM project_updates WHERE project_id = $1 ORDER BY created_at DESC",
+      [req.params.projectId],
+    );
+    res.json({ success: true, data: result.rows.map(mapProjectUpdateRow) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/updates  (admin only)
-router.post("/", adminRequired, async (req, res, next) => {
+// Rate-limited to prevent update spam
+router.post("/", adminRequired, updateCreationLimiter, async (req, res, next) => {
   try {
     const { projectId, title, body } = req.body;
 
@@ -66,8 +95,22 @@ router.post("/", adminRequired, async (req, res, next) => {
   }
 });
 
+// GET /api/updates/:projectId — list updates for a project, most recent first
+router.get("/:projectId", async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM project_updates WHERE project_id = $1 ORDER BY created_at DESC",
+      [req.params.projectId],
+    );
+    res.json({ success: true, data: result.rows.map(mapProjectUpdateRow) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/updates/:updateId/like — toggle like
-router.post("/:updateId/like", async (req, res, next) => {
+// Rate-limited per donor to prevent like enumeration/spam
+router.post("/:updateId/like", likeLimiter, async (req, res, next) => {
   try {
     const { donorAddress } = req.body || {};
     if (!donorAddress || typeof donorAddress !== "string") {

@@ -110,6 +110,7 @@ pub enum DataKey {
     // Governance
     Proposal(String),
     HasVoted(String, Address),
+    AllowedToken(Address),
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -192,6 +193,38 @@ impl GreenPayContract {
         env.storage()
             .instance()
             .set(&DataKey::GlobalCO2OffsetGrams, &0i128);
+    }
+
+    // ─── Token allowlist ──────────────────────────────────────────────────────
+
+    pub fn allow_token(env: Env, admin: Address, token: Address) {
+        admin.require_auth();
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        if stored_admin != admin {
+            panic!("Only admin can manage tokens");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowedToken(token), &true);
+    }
+
+    pub fn remove_token(env: Env, admin: Address, token: Address) {
+        admin.require_auth();
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        if stored_admin != admin {
+            panic!("Only admin can manage tokens");
+        }
+        env.storage()
+            .instance()
+            .remove(&DataKey::AllowedToken(token));
     }
 
     // ─── Project management ───────────────────────────────────────────────────
@@ -283,6 +316,14 @@ impl GreenPayContract {
         donor.require_auth();
         if amount <= 0 {
             panic!("Donation amount must be positive");
+        }
+
+        if !env
+            .storage()
+            .instance()
+            .has(&DataKey::AllowedToken(token.clone()))
+        {
+            panic!("Token is not supported");
         }
 
         let mut project: Project = env
@@ -756,6 +797,9 @@ mod tests {
             .register_stellar_asset_contract_v2(token_admin.clone())
             .address();
         let token_client = StellarAssetClient::new(&env, &token);
+
+        client.allow_token(&admin, &token);
+
         (env, cid, client, admin, pid, token, token_client)
     }
 
@@ -765,6 +809,18 @@ mod tests {
 
     fn mint_to(_env: &Env, token_client: &StellarAssetClient, donor: &Address, amount: i128) {
         token_client.mint(donor, &amount);
+    }
+
+    #[test]
+    #[should_panic(expected = "Token is not supported")]
+    fn test_donate_with_unsupported_token_panics() {
+        let (env, _cid, client, _admin, pid) = setup();
+        let token_admin = Address::generate(&env);
+        let token = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+        let donor = Address::generate(&env);
+        client.donate(&token, &donor, &pid, &1000, &0u32);
     }
 
     // ─── Donation / overflow regression tests ─────────────────────────────────
@@ -1076,6 +1132,8 @@ mod tests {
         let token_client = StellarAssetClient::new(&env, &token);
         let amount = 25 * STROOP;
         let expected_co2 = 25 * 100i128;
+
+        client_v1.allow_token(&_admin, &token);
 
         token_client.mint(&donor, &amount);
         client_v1.donate(&token, &donor, &pid, &amount, &42u32);

@@ -43,6 +43,8 @@ For production deployments:
 ### Automated Backups
 
 GreenPay implements automated nightly database backups to cloud storage for disaster recovery.
+The restore path is verified on a recurring basis, not just assumed — see
+[Disaster Recovery Game Day](#disaster-recovery-game-day) below.
 
 #### Backup Flow
 
@@ -115,7 +117,32 @@ bash scripts/backup-db.sh
 pg_dump -h localhost -p 5432 -U postgres greenpay | gzip > greenpay_backup_$(date +%Y%m%d_%H%M%S).sql.gz
 ```
 
+## Disaster Recovery Game Day
+
+A backup existing and a backup being restorable are different claims. The
+nightly backup script (`scripts/backup-db.sh`) previously had a
+function-ordering bug that made it fail on every run from the day it was
+introduced — `bash -n` syntax checks don't catch that, because calling a
+not-yet-defined shell function is valid syntax that only fails at runtime.
+It's fixed now, and a quarterly automated game-day drill
+(`.github/workflows/db-restore-drill.yml`, running
+`scripts/db-restore-drill.sh`) actually restores a real backup to a fresh
+PostgreSQL instance and verifies data integrity end-to-end, so this doesn't
+silently regress again.
+
+**Measured RTO/RPO and the full procedure live in
+[docs/runbooks/db-restore-drill.md](runbooks/db-restore-drill.md)** — treat
+that runbook, not this page, as the source of truth for restoring in a real
+incident. Every drill run's raw numbers are recorded in
+[docs/runbooks/drills/](runbooks/drills/).
+
 ## Database Restore Procedures
+
+The sections below are general reference for the underlying `psql`/`pg_dump`
+mechanics. For an actual restore — incident or drill — use
+`scripts/restore-db.sh` (see the runbook above), which wraps this with
+integrity verification, safety guards against clobbering an existing
+database, and known client/server version-compatibility handling.
 
 ### Prerequisites
 
@@ -277,37 +304,26 @@ documentation — recovery granularity is limited to the nightly snapshot.
 ### Automated Testing
 
 The backup workflow includes failure notifications. Failed backups will create an issue in the repository.
+`scripts/tests/test-backup-restore.sh` runs on every push and guards against
+the specific function-ordering regression that broke backups for months
+(see [Disaster Recovery Game Day](#disaster-recovery-game-day)).
 
-### Manual Restore Test
+### Restore Drill (real backup, real restore, real verification)
 
-To verify backup integrity:
+Rather than hand-run, drifting-from-reality instructions, restore testing is
+a single script that does exactly what the quarterly game day does:
 
 ```bash
-# 1. Create a temporary PostgreSQL instance
-docker run -d \
-  --name postgres-test \
-  -e POSTGRES_PASSWORD=testpass \
-  -p 5433:5432 \
-  postgres:16-alpine
-
-# 2. Download and restore backup
-aws s3 cp s3://my-backup-bucket/backups/greenpay_backup_latest.sql.gz .
-gunzip greenpay_backup_latest.sql.gz
-
-# 3. Wait for container to be ready
-sleep 10
-
-# 4. Create database and restore
-PGPASSWORD=testpass psql -h localhost -p 5433 -U postgres -c "CREATE DATABASE greenpay;"
-PGPASSWORD=testpass psql -h localhost -p 5433 -U postgres greenpay < greenpay_backup_latest.sql
-
-# 5. Verify data
-PGPASSWORD=testpass psql -h localhost -p 5433 -U postgres greenpay -c "SELECT COUNT(*) FROM information_schema.tables;"
-
-# 6. Cleanup
-docker stop postgres-test
-docker rm postgres-test
+scripts/db-restore-drill.sh
 ```
+
+This spins up a real PostgreSQL 16 container, seeds it, runs the actual
+`scripts/backup-db.sh`, provisions a second fresh instance, times a real
+restore with `scripts/restore-db.sh`, and verifies row counts and a checksum
+match exactly. See
+[docs/runbooks/db-restore-drill.md](runbooks/db-restore-drill.md) for what
+it checks and why, and [docs/runbooks/drills/](runbooks/drills/) for every
+run's report.
 
 ## Troubleshooting
 
@@ -375,13 +391,18 @@ psql -h localhost -U postgres greenpay \
 2. **Encryption at Rest:** Enable S3/GCS encryption
 3. **Access Control:** Use IAM roles and service accounts with least privilege
 4. **Audit Logging:** Enable CloudTrail (AWS) or Cloud Audit Logs (GCP)
-5. **Retention Policy:** Set appropriate backup retention based on compliance requirements
+5. **Retention Policy:** Set appropriate backup retention based on compliance requirements (see [Data Retention Policy](data-retention-policy.md))
 6. **Sensitive Data:** Consider PII redaction in backups for non-production environments
 
 ## Related Files
 
 - Backup Script: [scripts/backup-db.sh](../scripts/backup-db.sh)
-- GitHub Actions Workflow: [.github/workflows/database-backup.yml](../.github/workflows/database-backup.yml)
+- Restore Script: [scripts/restore-db.sh](../scripts/restore-db.sh)
+- Restore Drill Script: [scripts/db-restore-drill.sh](../scripts/db-restore-drill.sh)
+- Backup/Restore Tests: [scripts/tests/test-backup-restore.sh](../scripts/tests/test-backup-restore.sh)
+- Disaster Recovery Runbook: [docs/runbooks/db-restore-drill.md](runbooks/db-restore-drill.md)
+- GitHub Actions Workflow (nightly backup): [.github/workflows/database-backup.yml](../.github/workflows/database-backup.yml)
+- GitHub Actions Workflow (quarterly restore drill): [.github/workflows/db-restore-drill.yml](../.github/workflows/db-restore-drill.yml)
 - Docker Compose: [docker-compose.yml](../docker-compose.yml)
 
 ## Contact & Support

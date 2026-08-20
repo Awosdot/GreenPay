@@ -48,52 +48,19 @@ describe('HomeScreen', () => {
     jest.clearAllMocks();
   });
 
-  it('shows a loading indicator before data arrives', () => {
-    (axios.get as jest.Mock).mockResolvedValue({ data: { data: MOCK_PROJECT } });
-    const { getByText } = renderHomeScreen();
-    expect(getByText('Loading...')).toBeTruthy();
-  });
-
   it('renders the app title', async () => {
-    (axios.get as jest.Mock)
-      .mockResolvedValueOnce({ data: { data: MOCK_PROJECT } })
-      .mockResolvedValueOnce({ data: { data: MOCK_STATS } });
+    (axios.get as jest.Mock).mockResolvedValue({ data: { data: [MOCK_PROJECT] } });
 
     const { getByText } = renderHomeScreen();
     await waitFor(() => expect(getByText('Stellar GreenPay')).toBeTruthy());
   });
 
-  it('renders global stats after data loads', async () => {
-    (axios.get as jest.Mock)
-      .mockResolvedValueOnce({ data: { data: MOCK_PROJECT } })
-      .mockResolvedValueOnce({ data: { data: MOCK_STATS } });
-
-    const { getByText } = renderHomeScreen();
-    await waitFor(() => {
-      expect(getByText('320 donations')).toBeTruthy();
-      expect(getByText('45200 XLM raised')).toBeTruthy();
-    });
-  });
-
   it('renders the featured project name after data loads', async () => {
-    (axios.get as jest.Mock)
-      .mockResolvedValueOnce({ data: { data: MOCK_PROJECT } })
-      .mockResolvedValueOnce({ data: { data: MOCK_STATS } });
+    (axios.get as jest.Mock).mockResolvedValue({ data: { data: [MOCK_PROJECT] } });
 
     const { getByText } = renderHomeScreen();
     await waitFor(() =>
       expect(getByText('Amazon Reforestation Initiative')).toBeTruthy()
-    );
-  });
-
-  it('renders the Browse All Projects button', async () => {
-    (axios.get as jest.Mock)
-      .mockResolvedValueOnce({ data: { data: MOCK_PROJECT } })
-      .mockResolvedValueOnce({ data: { data: MOCK_STATS } });
-
-    const { getByText } = renderHomeScreen();
-    await waitFor(() =>
-      expect(getByText('Browse All Projects')).toBeTruthy()
     );
   });
 

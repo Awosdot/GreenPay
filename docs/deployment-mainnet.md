@@ -1,8 +1,25 @@
 # Mainnet Deployment Runbook
 
-This runbook documents the steps required to deploy Stellar GreenPay to Stellar Mainnet, configure backend and frontend environment variables, and register the initial climate projects on-chain.
+This runbook documents the steps required to deploy Stellar GreenPay to Stellar Mainnet: deploying the contract, configuring the cluster, and registering the initial climate projects on-chain.
 
 > This guide is intended for deployers and DevOps engineers preparing the first Mainnet launch.
+
+## 0. One source of truth for deployed configuration
+
+**The Helm chart is the only supported way to configure a deployed GreenPay environment.** Network selection, Horizon and Soroban RPC endpoints, the contract id and the public hostname all come from the chart's values files, and nothing else:
+
+| File | Role |
+| --- | --- |
+| `helm/greenpay/values.yaml` | Base defaults. Testnet, `greenpay.local`, development password. Safe by default; never deploy Mainnet with this file alone. |
+| `helm/greenpay/values-mainnet.yaml` | Mainnet overlay. Overrides only the fields that differ: network, Horizon/Soroban URLs, USDC issuer, ingress host and TLS, and a reference to a pre-existing Kubernetes Secret. Contains no credentials. |
+| `helm/greenpay/ci/mainnet-render-check.yaml` | CI-only stand-ins for the deploy-time values the overlay leaves empty. Never used for a real deploy. |
+
+Two things that are **not** deployment configuration:
+
+- `backend/.env` and `frontend/.env.local` configure a developer's local machine (`npm run dev`). They are not read by anything running in the cluster — the pods read the ConfigMap and Secret the chart renders. Editing them has no effect on a deployed environment.
+- `k8s/*.yaml` are hardcoded testnet manifests used for local/dev clusters. They are not parameterised per environment and must not be applied to a Mainnet cluster.
+
+Because the merged values are the only input, the pre-deploy guard (§4) can check the *rendered* release and reject a Mainnet deploy that still carries testnet settings.
 
 ## 1. Prerequisites
 
@@ -10,9 +27,9 @@ This runbook documents the steps required to deploy Stellar GreenPay to Stellar 
 - `npm`
 - `Rust + Cargo`
 - `cargo install --locked stellar-cli`
+- `helm` 3.x and `kubectl`, with your context pointed at the production cluster
 - A funded Stellar Mainnet account for contract deployment and admin operations
 - `freighter` or another Stellar wallet for admin key management
-- Access to update `frontend/.env.local` and `backend/.env`
 
 ## 2. Build the GreenPay Soroban contract
 
@@ -52,32 +69,79 @@ If the deploy succeeds, the script prints:
 ./scripts/deploy-contract.sh mainnet alice
 ```
 
-## 4. Configure Mainnet environment variables
+Keep the contract id — step 4 passes it to Helm.
 
-Update the frontend and backend environment files with Mainnet endpoints and the deployed contract ID.
+## 4. Deploy to Mainnet with Helm
 
-### Frontend (`frontend/.env.local`)
+### 4.1 Create the production Secret
 
-```env
-NEXT_PUBLIC_STELLAR_NETWORK=mainnet
-NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org
-NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban.stellar.org
-NEXT_PUBLIC_API_URL=https://your-production-api.example.com
-NEXT_PUBLIC_CONTRACT_ID=<contract-id>
+The Mainnet overlay sets `secrets.existingSecret: greenpay-secrets-mainnet`, so the chart renders **no** Secret of its own and no production credential is ever written into a values file. Create that Secret out-of-band (or through an external secrets operator) before deploying:
+
+```bash
+kubectl create namespace greenpay --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl -n greenpay create secret generic greenpay-secrets-mainnet \
+  --from-literal=POSTGRES_USER=greenpay \
+  --from-literal=POSTGRES_PASSWORD="$(openssl rand -base64 32)" \
+  --from-literal=POSTGRES_DB=greenpay \
+  --from-literal=DATABASE_URL='postgres://greenpay:<password>@postgres-svc:5432/greenpay' \
+  --from-literal=RESEND_API_KEY='<resend key>' \
+  --from-literal=ADMIN_API_KEY="$(openssl rand -hex 32)"
 ```
 
-### Backend (`backend/.env`)
+Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` if Postgres WAL archiving to S3 is enabled.
 
-```env
-PORT=4000
-STELLAR_NETWORK=mainnet
-HORIZON_URL=https://horizon.stellar.org
-SOROBAN_RPC_URL=https://soroban.stellar.org
-CONTRACT_ID=<contract-id>
-ALLOWED_ORIGINS=https://your-production-app.example.com
+### 4.2 Run the pre-deploy guard
+
+`scripts/validate-helm-release.js` renders the merged values with `helm template` and asserts the invariants on the rendered output — not on any single values file, because a bad merge or a stray `--set` is exactly what it exists to catch. It refuses the deploy when:
+
+- `stellarNetwork: mainnet` is combined with a testnet Horizon or Soroban RPC URL (and the reverse: a testnet release pointed at a pubnet endpoint),
+- the contract id is empty or malformed, or the backend and frontend disagree on network, endpoints or contract id,
+- the rendered Secret still carries the `changeme` default password, a weak password, or an empty admin key,
+- the ingress host is still `greenpay.local`, a `.local`/reserved placeholder domain, or empty, or TLS is off while origins are `https`,
+- the release renders a different network from the one the deploy expects (`--expect-network`).
+
+Run it with the exact arguments you are about to deploy with:
+
+```bash
+node scripts/validate-helm-release.js \
+  -f helm/greenpay/values.yaml \
+  -f helm/greenpay/values-mainnet.yaml \
+  --set config.contractId=<contract-id> \
+  --set ingress.host=app.greenpay.example \
+  --set config.emailFrom="GreenPay <updates@greenpay.example>" \
+  --expect-network mainnet
 ```
 
-> `backend/src/services/stellar.js` reads `STELLAR_NETWORK`, `HORIZON_URL`, `SOROBAN_RPC_URL`, and `CONTRACT_ID` from this file.
+A clean run prints `✔ Rendered release is consistent for network=mainnet`. Anything else exits non-zero and lists what is wrong — do not deploy until it is clean. The same check runs in CI (`Helm Release Guard`) on every pull request.
+
+### 4.3 Deploy
+
+```bash
+helm upgrade --install greenpay helm/greenpay \
+  -f helm/greenpay/values.yaml \
+  -f helm/greenpay/values-mainnet.yaml \
+  --set config.contractId=<contract-id> \
+  --set ingress.host=app.greenpay.example \
+  --set config.emailFrom="GreenPay <updates@greenpay.example>" \
+  --namespace greenpay
+```
+
+Values supplied at deploy time — the overlay deliberately leaves them empty so a Mainnet release can never inherit a testnet or placeholder value:
+
+| Value | Source |
+| --- | --- |
+| `config.contractId` | printed by `scripts/deploy-contract.sh mainnet` (step 3) |
+| `ingress.host` | the production hostname (§7) |
+| `config.emailFrom` | the production transactional sender address |
+
+### 4.4 Verify what the cluster actually received
+
+The guard also validates a live release, so you can confirm the running configuration rather than the intended one:
+
+```bash
+helm get manifest greenpay -n greenpay | node scripts/validate-helm-release.js --manifest -
+```
 
 ## 5. Register initial projects on-chain
 
@@ -101,7 +165,7 @@ stellar contract invoke \
 ```
 
 - `project_id` should be unique and stable (e.g. `amazon-reforestation`).
-- `wallet` is the project’s Stellar destination account.
+- `wallet` is the project's Stellar destination account.
 - `co2_per_xlm` is grams of CO₂ offset per XLM donated.
 
 ### Recommended initial registration process
@@ -118,15 +182,27 @@ stellar contract invoke \
 - Confirm the contract ID exists on Stellar Mainnet.
 - Inspect contract metadata with Soroban CLI or a Mainnet explorer.
 
+### Check the rendered configuration
+
+```bash
+kubectl -n greenpay get configmap greenpay-config -o yaml
+```
+
+`STELLAR_NETWORK`, `HORIZON_URL`, `SOROBAN_RPC_URL`, `CONTRACT_ID` and their `NEXT_PUBLIC_*` counterparts must all be the Mainnet values. `SOROBAN_RPC_URL` in particular must be present: `backend/src/services/stellar.js` falls back to the **testnet** RPC when it is unset, which is why the chart always renders it and the guard fails when it is missing.
+
+### Check the running pods
+
+```bash
+kubectl -n greenpay rollout status deploy/backend deploy/frontend
+kubectl -n greenpay exec deploy/backend -- printenv STELLAR_NETWORK HORIZON_URL SOROBAN_RPC_URL CONTRACT_ID
+curl -s https://app.greenpay.example/api/health
+```
+
+`/api/health` reports the network the backend actually resolved — confirm it says `mainnet`.
+
 ### Check project registration
 
 Call `get_project()` via the contract or through the backend API to ensure the registered project is visible.
-
-### Confirm frontend/backend
-
-- Start the backend with `cd backend && npm run dev`.
-- Start the frontend with `cd frontend && npm run dev`.
-- Ensure the frontend uses `NEXT_PUBLIC_CONTRACT_ID` and can read project data from the contract.
 
 ## 7. Mainnet-specific operations
 
@@ -134,54 +210,16 @@ Call `get_project()` via the contract or through the backend API to ensure the r
 
 Use a dedicated deployer/admin identity for contract initialization and project registration. Keep the secret seed private and secure.
 
-### Production origin
+### TLS and DNS
 
-Set `ALLOWED_ORIGINS` in `backend/.env` to your production frontend URL.
+The Mainnet overlay sets `ingress.tls.enabled: true`, so the chart renders a `tls:` block referencing the Secret named in `ingress.tls.secretName` (default `greenpay-tls`). The certificate itself still has to exist:
 
-### TLS termination (not yet in the k8s manifests)
+1. Point a real DNS record (e.g. `app.greenpay.example`) at the ingress load balancer (`kubectl -n greenpay get svc` → `EXTERNAL-IP` for the nginx ingress controller).
+2. Install a certificate issuer, e.g. `cert-manager` with a `ClusterIssuer` (Let's Encrypt staging first, then prod), and have it issue into `greenpay-tls` in the `greenpay` namespace.
+3. Deploy with `--set ingress.host=<that hostname>` as in §4.3. No manifest editing is required — `k8s/ingress.yaml` is the dev-cluster manifest and is not used for Mainnet.
+4. Verify with `curl -I https://app.greenpay.example/api/health` and a browser cert check.
 
-> **Current state:** the provided `k8s/ingress.yaml` terminates **HTTP only** —
-> it has no `tls:` block, no certificate issuer, and the host is the placeholder
-> `greenpay.local`. Consequently, every `https://…` URL in the example
-> configuration above (`NEXT_PUBLIC_API_URL`, `ALLOWED_ORIGINS`) is a
-> **placeholder** until TLS is actually provisioned. Do not point a browser or
-> the frontend at those URLs before the steps below are done.
-
-Before exposing the deployment to real users, TLS must be added outside of what
-the repository currently ships:
-
-1. Point a real DNS record (e.g. `app.greenpay.example`) at the ingress load
-   balancer (`kubectl -n greenpay get svc` → `EXTERNAL-IP` for the nginx
-   ingress controller).
-2. Install a certificate issuer, e.g. `cert-manager` with a `ClusterIssuer`
-   (Let's Encrypt staging first, then prod).
-3. Add a `tls:` block to `k8s/ingress.yaml` and switch the host:
-
-   ```yaml
-   spec:
-     ingressClassName: nginx
-     tls:
-       - hosts:
-           - app.greenpay.example
-         secretName: greenpay-tls
-     rules:
-       - host: app.greenpay.example
-         http:
-           paths:
-             - path: /api
-               pathType: Prefix
-               backend: { service: { name: backend-svc, port: { number: 4000 } } }
-             - path: /
-               pathType: Prefix
-               backend: { service: { name: frontend-svc, port: { number: 3000 } } }
-   ```
-
-4. Verify with `curl -I https://app.greenpay.example/api/health` and a browser
-   cert check.
-
-Until step 3 is applied and the certificate is issued, keep the example URLs
-below and keep `ALLOWED_ORIGINS` aligned with whatever origin is actually
-served (HTTP during staging).
+`ALLOWED_ORIGINS` is derived from `ingress.host` and follows `ingress.tls.enabled`, so the backend's CORS origin always matches the scheme actually served. The guard rejects a Mainnet release whose origins are not `https`.
 
 ### Network passphrase
 
@@ -195,11 +233,13 @@ Public Global Stellar Network ; September 2015
 
 - `stellar: command not found`: install `stellar-cli` with `cargo install --locked stellar-cli`.
 - `contract deploy` fails: confirm the identity has enough XLM and the account exists on Mainnet.
-- `Contract ID not configured`: ensure `NEXT_PUBLIC_CONTRACT_ID` and `CONTRACT_ID` are set correctly.
-- `Soroban RPC` errors: verify `SOROBAN_RPC_URL=https://soroban.stellar.org`.
+- `Contract ID not configured`: the release was deployed without `--set config.contractId=...`. The guard catches this before deploy; re-run §4.2.
+- Backend reports `network: testnet` on Mainnet: the release was rendered from the base values only. Re-run §4.2 with `--expect-network mainnet` — the guard fails on exactly this.
+- `Soroban RPC` errors: check `SOROBAN_RPC_URL` in the ConfigMap; override with `--set config.sorobanRpcUrl=...` if your provider differs.
+- Guard reports `'helm' not found on PATH`: install Helm 3, or set `HELM_BIN` to its location.
 
 ## 9. Optional follow-up
 
-- Add a deployment manifest with the contract ID and project IDs.
 - Update `scripts/register-project.sh` to support Mainnet.
-- Add a production-ready frontend origin to `ALLOWED_ORIGINS`.
+- Add a staging overlay (`values-staging.yaml`) following the same base + overlay convention.
+- Move the production Secret behind an external secrets operator instead of `kubectl create secret`.

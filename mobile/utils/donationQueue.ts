@@ -65,6 +65,11 @@ export async function listQueuedDonations(): Promise<QueuedDonation[]> {
   }
 }
 
+export async function getQueuedDonation(id: string): Promise<QueuedDonation | undefined> {
+  const all = await listQueuedDonations();
+  return all.find((entry) => entry.id === id);
+}
+
 async function saveQueuedDonations(queue: QueuedDonation[]): Promise<void> {
   await AsyncStorage.setItem(DONATION_QUEUE_KEY, JSON.stringify(queue));
 }

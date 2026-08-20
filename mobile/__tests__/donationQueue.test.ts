@@ -9,6 +9,7 @@ import {
   listQueuedDonations,
   updateQueuedDonation,
   removeQueuedDonation,
+  getQueuedDonation,
 } from '../utils/donationQueue';
 
 describe('donationQueue', () => {
@@ -104,6 +105,27 @@ describe('donationQueue', () => {
 
     const list = await listQueuedDonations();
     expect(list).toHaveLength(1);
+  });
+
+  it('gets a single queued donation by id', async () => {
+    const first = await enqueueDonation({
+      projectId: 'proj-1',
+      projectName: 'Project One',
+      donorAddress: 'GABC',
+      amountXLM: '1',
+    });
+    await enqueueDonation({
+      projectId: 'proj-2',
+      projectName: 'Project Two',
+      donorAddress: 'GABC',
+      amountXLM: '2',
+    });
+
+    const found = await getQueuedDonation(first.id);
+    expect(found?.projectId).toBe('proj-1');
+
+    const missing = await getQueuedDonation('does-not-exist');
+    expect(missing).toBeUndefined();
   });
 
   it('recovers gracefully from corrupted storage', async () => {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 )
 
 // NodeHardware holds the parsed hardware profile for a single Kubernetes node,
@@ -169,8 +170,16 @@ func ParsePodHardwareReqs(pod *corev1.Pod) PodHardwareReqs {
 
 	weight := 1.0
 	if s, ok := annots[AnnotBinPackWeight]; ok {
-		if f, err := strconv.ParseFloat(s, 64); err == nil && f >= 0 {
-			weight = f
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			if f < 0 {
+				klog.Warningf("Pod %s/%s requested BinPackWeight %v, clamping to minimum 0", pod.Namespace, pod.Name, f)
+				weight = 0
+			} else if f > 2 {
+				klog.Warningf("Pod %s/%s requested BinPackWeight %v, clamping to maximum 2", pod.Namespace, pod.Name, f)
+				weight = 2.0
+			} else {
+				weight = f
+			}
 		}
 	}
 

@@ -8,7 +8,6 @@ const cookieParser = require("cookie-parser");
 const csurf     = require("csurf");
 const helmet    = require("helmet");
 const morgan    = require("morgan");
-const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 const { runMigrations } = require("./db/migrate");
 const { startTurretsServer } = require("./services/turrets");
@@ -43,18 +42,25 @@ app.use(helmet());
 app.use(morgan("dev"));
 app.use(express.json({ limit: "20kb" }));
 app.use(cookieParser());
+
+// CORS must run before CSRF validation so that a CSRF rejection still carries
+// Access-Control-Allow-Origin — otherwise browsers report a same-origin-looking
+// 403 as an opaque "blocked by CORS policy" failure instead of the real error.
+const origins = getAllowedOrigins();
+app.use(...createCorsMiddleware(origins));
+
 app.use(csurf({
   cookie: {
     httpOnly: true,
+    // SameSite=None requires Secure, or browsers drop the cookie outright.
+    // Only production serves over HTTPS, so keep them tied together —
+    // otherwise every CSRF-protected request silently fails everywhere else.
     secure: process.env.NODE_ENV === "production",
-    sameSite: "none",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     path: "/",
   },
   ignoreMethods: ["GET", "HEAD", "OPTIONS"],
 }));
-
-const origins = getAllowedOrigins();
-app.use(...createCorsMiddleware(origins));
 
 const io = new Server(server, {
   cors: {
@@ -64,7 +70,8 @@ const io = new Server(server, {
   }
 });
 app.set("io", io);
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 150, standardHeaders: true, legacyHeaders: false }));
+// Removed generic app-wide rate limiter — each mutating endpoint now has
+// a dedicated limiter appropriate to its abuse profile (see individual route files).
 
 // ── API versioning ───────────────────────────────────────────────────────────
 // All routes are served under the `/api/v1` prefix. Legacy unversioned `/api/*`
@@ -76,6 +83,7 @@ app.get(`${API_V1}/csrf-token`, (req, res) => {
   res.json({ success: true, csrfToken: req.csrfToken() });
 });
 
+app.get("/livez", (req, res) => res.json({ status: "ok" }));
 app.use("/health",                  require("./routes/health"));
 app.use(`${API_V1}/projects`,       require("./routes/projects"));
 app.use(`${API_V1}/donations`,      require("./routes/donations"));

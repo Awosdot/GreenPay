@@ -52,7 +52,7 @@ function createCorsOptions(allowedOrigins = getAllowedOrigins()) {
 
       return callback(null, allowed.has(origin));
     },
-    credentials: false,
+    credentials: process.env.CORS_ALLOW_CREDENTIALS === "true",
     methods: ["GET", "POST", "PATCH"],
   };
 }

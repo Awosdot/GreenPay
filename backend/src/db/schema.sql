@@ -27,6 +27,10 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_summary_generated_at TIMESTAMPT
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_summary_model        TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_summary_source_hash  TEXT;
 
+-- Set by PATCH /api/projects/:id/status when an admin rejects a project;
+-- read back by store.js's mapProjectRow as rejectionReason.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS rejection_reason        TEXT;
+
 CREATE TABLE IF NOT EXISTS donations (
   id UUID PRIMARY KEY,
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -140,9 +144,27 @@ CREATE TABLE IF NOT EXISTS device_tokens (
   token TEXT NOT NULL UNIQUE,
   platform TEXT NOT NULL,
   wallet_address TEXT,
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id UUID PRIMARY KEY,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+  ip_address TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at
+  ON admin_audit_log (created_at);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action
+  ON admin_audit_log (action);
 
 CREATE TABLE IF NOT EXISTS project_follows (
   id UUID PRIMARY KEY,

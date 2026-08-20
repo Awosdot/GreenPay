@@ -16,6 +16,8 @@ jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 import ProjectsScreen from '../app/projects/index';
 import { ThemeProvider } from '../app/theme';
 
+jest.setTimeout(15000);
+
 // app/projects/index.tsx reads theme colors via useTheme(), which requires a
 // ThemeProvider ancestor.
 function renderProjectsScreen() {

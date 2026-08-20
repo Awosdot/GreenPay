@@ -139,6 +139,57 @@ jobs:
       - run: go test -v ./...
       - run: go build -v ./...
 
+  helm:
+    name: Helm Release Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Lint testnet defaults
+        run: helm lint helm/greenpay --values helm/greenpay/values.yaml
+
+      - name: Lint mainnet overlay
+        run: |
+          helm lint helm/greenpay \
+            --values helm/greenpay/values.yaml \
+            --values helm/greenpay/values-mainnet.yaml \
+            --values helm/greenpay/ci/mainnet-render-check.yaml
+
+      # The guard's own regression suite: every way a mainnet release has been
+      # got wrong (stale testnet URL, default password, placeholder host, wrong
+      # environment) must still be rejected.
+      - name: Guard regression tests
+        run: node --test scripts/validate-helm-release.test.js
+
+      - name: Committed testnet defaults must render as testnet
+        run: node scripts/validate-helm-release.js --expect-network testnet
+
+      - name: Committed mainnet overlay must render clean as mainnet
+        run: |
+          node scripts/validate-helm-release.js \
+            -f helm/greenpay/values.yaml \
+            -f helm/greenpay/values-mainnet.yaml \
+            -f helm/greenpay/ci/mainnet-render-check.yaml \
+            --expect-network mainnet
+
+      # Proves the gate actually blocks rather than merely running: the mainnet
+      # overlay without its deploy-time values must be refused.
+      - name: Guard must refuse an under-specified mainnet release
+        run: |
+          if node scripts/validate-helm-release.js \
+               -f helm/greenpay/values.yaml \
+               -f helm/greenpay/values-mainnet.yaml \
+               --expect-network mainnet; then
+            echo "::error::the pre-deploy guard accepted a mainnet release with no contract id or ingress host"
+            exit 1
+          fi
+
   zap_scan:
     name: DAST Security Scan (OWASP ZAP)
     runs-on: ubuntu-latest
@@ -190,6 +241,49 @@ jobs:
             report.json
           retention-days: 14
           if-no-files-found: warn
+
+  integration:
+    name: Integration (Real Backend + Postgres)
+    runs-on: ubuntu-latest
+    needs: [frontend, backend]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: greenpay
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-install
+        with:
+          working-directory: backend
+      - uses: ./.github/actions/setup-node-install
+        with:
+          working-directory: frontend
+      - run: npx playwright install chromium
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_STELLAR_NETWORK: testnet
+          NEXT_PUBLIC_HORIZON_URL: https://horizon-testnet.stellar.org
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+      - name: Run E2E Integration Tests
+        run: npx playwright test --config=playwright.integration.config.ts
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/greenpay
+          NEXT_PUBLIC_STELLAR_NETWORK: testnet
+          NEXT_PUBLIC_HORIZON_URL: https://horizon-testnet.stellar.org
+          NEXT_PUBLIC_API_URL: http://localhost:4000
 
   container_build_scan:
     name: Container Build, Scan & Push (${{ matrix.image }})

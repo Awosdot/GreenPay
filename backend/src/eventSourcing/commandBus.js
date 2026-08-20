@@ -88,8 +88,11 @@ class DonationCommandHandler {
     project.apply(donationEvent);
     donor.apply(donationEvent);
 
-    await storeProjectAggregate(pool, command.payload.projectId, project);
-    await storeDonorAggregate(pool, command.payload.donorAddress, donor);
+    // DonationRecorded is projected by applyProjectProjection, which adds the
+    // donation to raised_xlm atomically — so the total is deliberately not
+    // written here (see storeProjectAggregate) to avoid counting it twice.
+    await storeProjectAggregate(pool, command.payload.projectId, project, { includeRaisedTotal: false });
+    await storeDonorAggregate(pool, command.payload.donorAddress);
 
     const donationRow = donationEvent.toRow();
     await pool.query(
@@ -152,7 +155,7 @@ class ApplyMatchCommandHandler {
     });
 
     donor.apply(matchEvent);
-    await storeDonorAggregate(pool, donorAddress, donor);
+    await storeDonorAggregate(pool, donorAddress);
 
     const matchRow = matchEvent.toRow();
     await pool.query(
@@ -286,8 +289,34 @@ class CreateMatchOfferCommandHandler {
   }
 }
 
-async function storeProjectAggregate(pool, projectId, aggregate) {
+/**
+ * Persists a project aggregate's state to the `projects` read model.
+ *
+ * `includeRaisedTotal` exists because `raised_xlm` has two potential writers.
+ * For donation events the projection (applyProjectProjection) already applies
+ * an atomic `raised_xlm = raised_xlm + amount`, so writing the aggregate's
+ * absolute total here as well counts the same donation twice — the project's
+ * raised figure ends up double the real amount. Callers whose event is also
+ * handled by that projection must pass `includeRaisedTotal: false` and let the
+ * projection own the total; the atomic increment is also the safer of the two
+ * writes, since an absolute SET computed from a previously-read value loses
+ * concurrent updates.
+ */
+async function storeProjectAggregate(pool, projectId, aggregate, { includeRaisedTotal = true } = {}) {
   const state = aggregate.getState();
+
+  if (!includeRaisedTotal) {
+    await pool.query(
+      `UPDATE projects
+       SET donor_count = $1,
+           status = $2,
+           updated_at = NOW()
+       WHERE id = $3`,
+      [state.donorCount, state.status, projectId]
+    );
+    return;
+  }
+
   await pool.query(
     `UPDATE projects
      SET raised_xlm = $1::numeric,
@@ -299,16 +328,23 @@ async function storeProjectAggregate(pool, projectId, aggregate) {
   );
 }
 
-async function storeDonorAggregate(pool, donorAddress, aggregate) {
-  const state = aggregate.getState();
+/**
+ * Ensures the donor has a `profiles` row.
+ *
+ * It deliberately does *not* write `donor_stats`. Both events that reach this
+ * function (DonationRecorded, MatchApplied) are handled by donorProjection,
+ * whose upsertDonorStats already folds the amount into the donor's running
+ * total. Writing the aggregate's absolute total here as well applied the same
+ * donation twice — a donor who gave 25 then 10 ended up recorded as having
+ * given 70. The projection owns donor_stats; this only guarantees the
+ * profiles row that donor_stats.public_key references exists.
+ */
+async function storeDonorAggregate(pool, donorAddress) {
   await pool.query(
-    `INSERT INTO donor_stats (public_key, total_donated_xlm, projects_supported, badges, projection_cursor)
-     VALUES ($1, $2::numeric, $3, $4::jsonb, 0)
-     ON CONFLICT (public_key) DO UPDATE SET
-       total_donated_xlm = EXCLUDED.total_donated_xlm,
-       projects_supported = EXCLUDED.projects_supported,
-       badges = EXCLUDED.badges`,
-    [donorAddress, state.totalDonatedXlm.toFixed(7), state.projectsSupported.size, JSON.stringify(state.badges)]
+    `INSERT INTO profiles (public_key, total_donated_xlm, projects_supported, badges, created_at)
+     VALUES ($1, 0, 0, '[]'::jsonb, NOW())
+     ON CONFLICT (public_key) DO NOTHING`,
+    [donorAddress]
   );
 }
 
