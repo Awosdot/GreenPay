@@ -1,0 +1,59 @@
+# GreenPay Helm chart — MAINNET OVERLAY.
+#
+# Layered on top of values.yaml; it overrides only the fields that differ
+# between testnet and mainnet, so the diff between environments stays legible:
+#
+#   helm upgrade --install greenpay helm/greenpay \
+#     -f helm/greenpay/values.yaml \
+#     -f helm/greenpay/values-mainnet.yaml \
+#     --set config.contractId=<deployed mainnet contract id>
+#
+# This file contains NO secrets. Production credentials come from the
+# pre-existing Kubernetes Secret named in secrets.existingSecret below.
+#
+# Run the guard before deploying — it renders these merged values and fails on
+# any mainnet/testnet mismatch:
+#
+#   node scripts/validate-helm-release.js \
+#     -f helm/greenpay/values.yaml -f helm/greenpay/values-mainnet.yaml \
+#     --expect-network mainnet
+
+config:
+  stellarNetwork: mainnet
+  horizonUrl: https://horizon.stellar.org
+  # Soroban RPC is provider-specific on pubnet; override with --set if you
+  # use a different provider. It must not point at a testnet endpoint.
+  sorobanRpcUrl: https://soroban.stellar.org
+  # REQUIRED at deploy time — the contract id printed by
+  # `./scripts/deploy-contract.sh mainnet <identity>`. Deliberately left empty:
+  # the guard fails the deploy if it is still empty or is not a well-formed
+  # contract id, so a mainnet release can never inherit a testnet contract.
+  contractId: ""
+  # Circle USDC issuer on Stellar pubnet.
+  usdcIssuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+  # REQUIRED at deploy time: --set config.emailFrom="GreenPay <updates@your-real-domain>"
+  # The guard rejects empty and placeholder sender domains on mainnet.
+  emailFrom: ""
+
+secrets:
+  # All production credentials live in this pre-existing Secret; nothing
+  # sensitive is committed here. Create it out-of-band (or via an external
+  # secrets operator) with the keys listed in values.yaml before deploying.
+  existingSecret: greenpay-secrets-mainnet
+
+ingress:
+  # REQUIRED at deploy time: --set ingress.host=app.greenpay.example
+  # Left empty on purpose so a mainnet release can never inherit the
+  # greenpay.local placeholder; the guard rejects an empty host, *.local,
+  # localhost and reserved placeholder domains on mainnet.
+  host: ""
+  className: nginx
+  tls:
+    enabled: true
+    secretName: greenpay-tls
+
+backend:
+  replicas: 3
+
+frontend:
+  replicas: 3

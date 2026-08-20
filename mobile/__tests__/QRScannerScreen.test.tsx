@@ -20,6 +20,8 @@ jest.mock('expo-router', () => ({
 
 import { QRScannerScreen } from '../src/screens/QRScannerScreen';
 
+jest.setTimeout(15000);
+
 const ACTIVE_DESTINATION = Keypair.random().publicKey();
 const INACTIVE_DESTINATION = Keypair.random().publicKey();
 

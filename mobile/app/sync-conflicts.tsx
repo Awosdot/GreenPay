@@ -148,7 +148,7 @@ export default function SyncConflictsScreen() {
   };
 
   const handleCompleteNow = (entry: QueuedDonation) => {
-    router.push(`/donate/${entry.projectId}`);
+    router.push(`/donate/${entry.projectId}?queueId=${entry.id}`);
   };
 
   const handleEditAmount = (entry: QueuedDonation) => {

@@ -185,7 +185,13 @@ func (s *MLWorkloadScore) Score(
 	}
 	bwState := raw.(*clusterBandwidthState)
 
-	// Fetch nodeInfo using the framework handle.
+	// Resolve the candidate node through the framework handle's snapshot.  The
+	// neutral fallback below is reserved for a node that genuinely cannot be
+	// resolved; it must not become the path every scheduling cycle takes.
+	if s.handle == nil || s.handle.SnapshotSharedLister() == nil {
+		klog.FromContext(ctx).V(3).Info("Score: no shared lister available", "node", nodeName)
+		return framework.MaxNodeScore / 2, framework.NewStatus(framework.Success)
+	}
 	nodeInfo, err := s.handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
 	if err != nil {
 		klog.FromContext(ctx).V(3).Info("Score: could not retrieve node info", "node", nodeName, "err", err)
@@ -200,7 +206,7 @@ func (s *MLWorkloadScore) Score(
 	reqs := hardware.ParsePodHardwareReqs(pod)
 	hw := hardware.ParseNodeHardware(node)
 
-	scoreA := s.binPackingScore(node, hw)
+	scoreA := s.binPackingScore(nodeInfo, hw)
 	scoreB := s.fragmentationScore(nodeInfo, node, hw)
 	scoreC := s.numaScore(reqs, hw)
 	scoreD := s.bandwidthScore(hw, bwState)
@@ -276,39 +282,78 @@ func (s *MLWorkloadScore) NormalizeScore(
 // binPackingScore rewards nodes that are already hosting ML workloads,
 // promoting dense GPU utilisation.
 //
-// Score = (allocatedMilliCPU / allocatableMilliCPU) × 100
+// Score = (requestedMilliCPU / allocatableMilliCPU) × 100
+//
+// The requested figure comes from the scheduler snapshot's NodeInfo, which
+// accumulates the resource requests of the pods actually placed on the node.
+// That is the quantity that has to move as ML pods land — scoring off
+// capacity − allocatable instead would only measure kubelet's static system
+// reservation and would return the same number for a node no matter what is
+// running on it.
 //
 // We use CPU as a proxy here because GPU-request accounting via the device
 // plugin model is exposed through extended resources on node allocatable.
 // Operators should also label GPU extended resources on nodes; this gives a
 // robust fallback for clusters where GPU device plugins are not deployed.
-func (s *MLWorkloadScore) binPackingScore(node *corev1.Node, hw hardware.NodeHardware) float64 {
-	allocatable := node.Status.Allocatable
-	if allocatable == nil {
+func (s *MLWorkloadScore) binPackingScore(ni *framework.NodeInfo, hw hardware.NodeHardware) float64 {
+	if ni == nil || ni.Node() == nil {
 		return 50.0 // neutral
 	}
 
-	allocatableCPU := allocatable.Cpu().MilliValue()
-	if allocatableCPU == 0 {
+	allocatable := ni.Allocatable
+	requested := ni.Requested
+
+	if allocatable == nil || requested == nil {
 		return 50.0
 	}
 
-	// Sum requested CPU across all pods already on the node.
-	// We approximate this by walking node.Status.Capacity - Allocatable difference
-	// as a proxy for used resources.  A production deployment would use the
-	// NodeInfo.Requested field from the framework handle instead.
-	capacity := node.Status.Capacity
-	if capacity == nil {
+	var fractions []float64
+
+	// 1. CPU
+	if allocatable.MilliCPU > 0 {
+		f := float64(requested.MilliCPU) / float64(allocatable.MilliCPU)
+		fractions = append(fractions, f)
+	}
+
+	// 2. GPUs (extended resources)
+	gpuResourceNames := []corev1.ResourceName{
+		"nvidia.com/gpu",
+		"amd.com/gpu",
+		"google.com/tpu",
+	}
+
+	for _, resName := range gpuResourceNames {
+		var allocQty int64 = 0
+		if allocatable.ScalarResources != nil {
+			allocQty = allocatable.ScalarResources[resName]
+		}
+		if allocQty > 0 {
+			var reqQty int64 = 0
+			if requested.ScalarResources != nil {
+				reqQty = requested.ScalarResources[resName]
+			}
+			f := float64(reqQty) / float64(allocQty)
+			fractions = append(fractions, f)
+		}
+	}
+
+	if len(fractions) == 0 {
 		return 50.0
 	}
 
-	usedMilliCPU := capacity.Cpu().MilliValue() - allocatableCPU
-	if usedMilliCPU < 0 {
-		usedMilliCPU = 0
+	var totalFraction float64 = 0
+	for _, f := range fractions {
+		totalFraction += f
 	}
 
-	fraction := float64(usedMilliCPU) / float64(capacity.Cpu().MilliValue())
-	return fraction * 100.0
+	avgFraction := totalFraction / float64(len(fractions))
+	if avgFraction > 1.0 {
+		avgFraction = 1.0
+	} else if avgFraction < 0.0 {
+		avgFraction = 0.0
+	}
+
+	return avgFraction * 100.0
 }
 
 // fragmentationScore computes the allocated GPU fraction for a node and

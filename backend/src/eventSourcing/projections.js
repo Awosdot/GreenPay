@@ -108,21 +108,41 @@ function computeBadges(totalXLM) {
   return earned;
 }
 
-async function getExistingDonorTotal(client, donorAddress) {
+async function getExistingDonorStats(client, donorAddress) {
   const result = await client.query(
     "SELECT total_donated_xlm FROM donor_stats WHERE public_key = $1",
     [donorAddress]
   );
   if (result.rows[0]) {
-    return parseFloat(result.rows[0].total_donated_xlm?.toString() || "0");
+    return {
+      exists: true,
+      total: parseFloat(result.rows[0].total_donated_xlm?.toString() || "0"),
+    };
   }
-  return 0;
+  return { exists: false, total: 0 };
 }
 
 async function upsertDonorStats(client, donorAddress, xlmDelta, version) {
-  const existingTotal = await getExistingDonorTotal(client, donorAddress);
+  const { exists: donorStatsExists, total: existingTotal } =
+    await getExistingDonorStats(client, donorAddress);
   const newTotal = round7(existingTotal + xlmDelta);
   const badges = computeBadges(newTotal);
+
+  // donor_stats.public_key references profiles(public_key), so a donor's very
+  // first donation needs a profile row before the insert below can satisfy its
+  // foreign key. Every later donation does not: the existence of a donor_stats
+  // row is itself proof the profile exists, so the guard is skipped. That keeps
+  // the steady-state projection at the four statements per event documented in
+  // docs/performance.md (this insert running unconditionally was a fifth, and
+  // capacity is set by statements per event).
+  if (!donorStatsExists) {
+    await client.query(
+      `INSERT INTO profiles (public_key, total_donated_xlm, projects_supported, badges, created_at)
+       VALUES ($1, 0, 0, '[]'::jsonb, NOW())
+       ON CONFLICT (public_key) DO NOTHING`,
+      [donorAddress]
+    );
+  }
 
   await client.query(
     `INSERT INTO donor_stats (public_key, total_donated_xlm, projects_supported, badges, projection_cursor)

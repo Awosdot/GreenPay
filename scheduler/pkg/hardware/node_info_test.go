@@ -255,6 +255,35 @@ func TestParsePodHardwareReqs_Defaults(t *testing.T) {
 	}
 }
 
+func TestParsePodHardwareReqs_BinPackWeightClamping(t *testing.T) {
+	cases := []struct {
+		name       string
+		annotation string
+		want       float64
+	}{
+		{"within range", "1.5", 1.5},
+		{"below minimum clamped to 0", "-1", 0.0},
+		{"above maximum clamped to 2", "5", 2.0},
+		{"zero", "0.0", 0.0},
+		{"maximum", "2.0", 2.0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						hardware.AnnotBinPackWeight: tc.annotation,
+					},
+				},
+			}
+			reqs := hardware.ParsePodHardwareReqs(pod)
+			if reqs.BinPackWeight != tc.want {
+				t.Errorf("BinPackWeight for annotation %q: got %f, want %f", tc.annotation, reqs.BinPackWeight, tc.want)
+			}
+		})
+	}
+}
+
 func TestParsePodHardwareReqs_GPUCountFromResources(t *testing.T) {
 	pod := &corev1.Pod{
 		Spec: corev1.PodSpec{

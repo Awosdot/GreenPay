@@ -13,6 +13,8 @@ let lastProcessedLedger = 0;
 let isRunning = false;
 let io = null;
 let projectWallets = new Map(); // wallet_address -> project_id
+let refreshIntervalId = null;
+let closeStream = null;
 
 /**
  * Fetch all active project wallets and cache them.
@@ -48,12 +50,12 @@ async function startIndexer(socketIo) {
 
   await updateProjectWallets();
   // Refresh cache every 10 minutes
-  setInterval(updateProjectWallets, 10 * 60 * 1000);
+  refreshIntervalId = setInterval(updateProjectWallets, 10 * 60 * 1000);
 
   console.log("[Indexer] Starting Horizon operations stream...");
 
   // Start streaming operations from 'now'
-  stellarServer.operations()
+  closeStream = stellarServer.operations()
     .cursor("now")
     .stream({
       onmessage: async (op) => {
@@ -178,6 +180,27 @@ async function handleDonation(projectId, op) {
 }
 
 /**
+ * Stop the Horizon stream and the wallet-cache refresh interval, so the
+ * indexer performs no further work — and no further database queries —
+ * once shutdown has begun.
+ */
+function stopIndexer() {
+  if (!isRunning) return;
+
+  if (refreshIntervalId) {
+    clearInterval(refreshIntervalId);
+    refreshIntervalId = null;
+  }
+  if (typeof closeStream === "function") {
+    closeStream();
+    closeStream = null;
+  }
+
+  isRunning = false;
+  console.log("[Indexer] Stopped");
+}
+
+/**
  * Returns the indexer status for the health endpoint.
  */
 function getStatus() {
@@ -198,5 +221,6 @@ function getStatus() {
 
 module.exports = {
   startIndexer,
+  stopIndexer,
   getStatus
 };
