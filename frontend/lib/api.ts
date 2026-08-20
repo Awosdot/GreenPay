@@ -507,6 +507,59 @@ export async function submitProject(payload: SubmitProjectPayload): Promise<Subm
   return data.data;
 }
 
+// ── Admin: JWT Auth & AI-Summary Failures ────────────────────────────────────
+export interface AdminLoginResponse {
+  token: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+export async function adminLogin(username: string, password: string): Promise<AdminLoginResponse> {
+  const { data } = await api.post<{ success: boolean; data: AdminLoginResponse }>(
+    "/api/admin/login",
+    { username, password },
+  );
+  return data.data;
+}
+
+export interface AISummaryJobFailure {
+  id: string;
+  projectId: string;
+  payload: { name?: string; category?: string; description?: string; adminAddress?: string };
+  errorMessage: string | null;
+  errorStack: string | null;
+  status: "failed" | "retried";
+  createdAt: string;
+}
+
+export interface Paginated<T> {
+  data: T[];
+  pagination: { total: number; limit: number; offset: number };
+}
+
+export async function fetchAISummaryFailures(
+  token: string,
+  params: { status?: string; limit?: number; offset?: number } = {},
+): Promise<Paginated<AISummaryJobFailure>> {
+  const { data } = await api.get<{ success: boolean; data: AISummaryJobFailure[]; pagination: Paginated<AISummaryJobFailure>["pagination"] }>(
+    "/api/admin/ai-summary-failures",
+    { params, headers: { Authorization: `Bearer ${token}` } },
+  );
+  return { data: data.data, pagination: data.pagination };
+}
+
+export async function retryAISummaryFailure(
+  token: string,
+  id: string,
+): Promise<{ id: string; status: string }> {
+  const { data } = await api.post<{ success: boolean; data: { id: string; status: string } }>(
+    `/api/admin/ai-summary-failures/${id}/retry`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return data.data;
+}
+
 // ── Network Graph (on-chain transaction visualizer) ─────────────────────────
 export interface NetworkNode {
   id: string;

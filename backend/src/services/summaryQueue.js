@@ -7,14 +7,27 @@
 "use strict";
 
 const crypto = require("crypto");
+const { v4: uuid } = require("uuid");
 const PgBoss = require("pg-boss");
 const pool = require("../db/pool");
 const { generateProjectSummary } = require("./claude");
 const { logAdminAction } = require("./audit");
 
 const QUEUE = "ai-summary";
+const DLQ = "ai-summary-dlq";
 
 let boss = null;
+
+/**
+ * Called when an AI-summary job has exhausted its retries and landed on the
+ * dead-letter queue. The repo has no alerting integration (Slack/PagerDuty/
+ * Sentry) yet — this is the extension point to wire one up later.
+ *
+ * @param {{ projectId: string, error: { name?: string, message?: string, stack?: string } }} info
+ */
+function notifyRepeatedFailure(info) {
+  void info;
+}
 
 /**
  * Start the pg-boss scheduler and register the AI-summary worker.
@@ -33,7 +46,14 @@ async function start(io) {
 
   await boss.start();
 
-  await boss.work(QUEUE, { teamSize: 2, teamConcurrency: 1 }, async (job) => {
+  // The DLQ must exist before the main queue is created, since pg-boss
+  // validates deadLetter against a foreign key on pgboss.queue(name).
+  await boss.createQueue(DLQ);
+  await boss.createQueue(QUEUE, { deadLetter: DLQ });
+
+  // pg-boss v10 always invokes work() callbacks with an array of jobs
+  // (length 1 here, since batchSize defaults to 1 and isn't overridden).
+  await boss.work(QUEUE, { teamSize: 2, teamConcurrency: 1 }, async ([job]) => {
     const { projectId, name, category, description, adminAddress } = job.data;
 
     let summaryResult;
@@ -87,6 +107,28 @@ async function start(io) {
     });
   });
 
+  await boss.work(DLQ, { includeMetadata: true }, async ([job]) => {
+    const { projectId, ...payload } = job.data || {};
+    const error = job.output || {};
+
+    console.error(
+      "[summaryQueue] AI summary job exhausted retries and was dead-lettered",
+      { projectId, error: error.message },
+    );
+
+    try {
+      await pool.query(
+        `INSERT INTO ai_summary_job_failures (id, project_id, payload, error_message, error_stack)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [uuid(), projectId, JSON.stringify(payload), error.message || null, error.stack || null],
+      );
+    } catch (err) {
+      console.error("[summaryQueue] Failed to record dead-lettered job:", err.message);
+    }
+
+    notifyRepeatedFailure({ projectId, error });
+  });
+
   console.log("[summaryQueue] pg-boss started, worker registered on queue:", QUEUE);
 }
 
@@ -105,4 +147,4 @@ async function enqueueAISummary(projectId, projectData) {
   return jobId;
 }
 
-module.exports = { start, enqueueAISummary };
+module.exports = { start, enqueueAISummary, notifyRepeatedFailure };

@@ -4,6 +4,7 @@ const router = express.Router();
 const pool = require("../db/pool");
 const { signToken, adminRequired } = require("../middleware/auth");
 const { createRateLimiter } = require("../middleware/rateLimiter");
+const { enqueueAISummary } = require("../services/summaryQueue");
 
 const loginLimiter = createRateLimiter(10, 15);
 
@@ -88,6 +89,80 @@ router.get("/audit", adminRequired, async (req, res, next) => {
         offset: Number.parseInt(offset, 10) || 0,
       },
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/ai-summary-failures", adminRequired, async (req, res, next) => {
+  try {
+    const { status, limit = 50, offset = 0 } = req.query;
+    const where = [];
+    const values = [];
+
+    if (status) {
+      values.push(status);
+      where.push(`status = $${values.length}`);
+    }
+
+    values.push(Math.min(Number.parseInt(limit, 10) || 50, 200));
+    values.push(Math.max(Number.parseInt(offset, 10) || 0, 0));
+
+    const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const result = await pool.query(
+      `SELECT id, project_id, payload, error_message, error_stack, status, created_at
+       FROM ai_summary_job_failures ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${values.length - 1} OFFSET $${values.length}`,
+      values,
+    );
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) AS total FROM ai_summary_job_failures ${whereClause}`,
+      values.slice(0, -2),
+    );
+
+    const rows = result.rows.map(row => ({
+      id: row.id,
+      projectId: row.project_id,
+      payload: row.payload,
+      errorMessage: row.error_message,
+      errorStack: row.error_stack,
+      status: row.status,
+      createdAt: new Date(row.created_at).toISOString(),
+    }));
+
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        total: parseInt(countResult.rows[0].total, 10),
+        limit: Number.parseInt(limit, 10) || 50,
+        offset: Number.parseInt(offset, 10) || 0,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/ai-summary-failures/:id/retry", adminRequired, async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      "SELECT id, project_id, payload, status FROM ai_summary_job_failures WHERE id = $1",
+      [req.params.id],
+    );
+    const failure = result.rows[0];
+    if (!failure) return res.status(404).json({ error: "Failure record not found" });
+
+    await enqueueAISummary(failure.project_id, failure.payload);
+
+    await pool.query(
+      "UPDATE ai_summary_job_failures SET status = 'retried' WHERE id = $1",
+      [failure.id],
+    );
+
+    res.json({ success: true, data: { id: failure.id, status: "retried" } });
   } catch (e) {
     next(e);
   }
