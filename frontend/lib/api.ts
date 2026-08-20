@@ -32,12 +32,28 @@ api.interceptors.request.use((config) => {
 
 let csrfToken: string | null = null;
 
+// Concurrent mutating requests can each observe a missing `csrfToken` before
+// the first refresh resolves. Sharing one in-flight promise across those
+// callers ensures only one `/api/csrf-token` request is issued instead of
+// one per racing caller.
+let csrfRefreshPromise: Promise<string | null> | null = null;
+
 async function refreshCsrfToken() {
-  const { data } = await api.get<{ success: boolean; csrfToken: string }>(
-    "/api/csrf-token",
-  );
-  csrfToken = data.csrfToken;
-  return csrfToken;
+  if (!csrfRefreshPromise) {
+    csrfRefreshPromise = (async () => {
+      try {
+        const { data } = await api.get<{ success: boolean; csrfToken: string }>(
+          "/api/csrf-token",
+        );
+        csrfToken = data.csrfToken;
+        return csrfToken;
+      } finally {
+        csrfRefreshPromise = null;
+      }
+    })();
+  }
+
+  return csrfRefreshPromise;
 }
 
 api.interceptors.request.use(async (config) => {
