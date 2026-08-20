@@ -4,6 +4,8 @@ const router = express.Router();
 const pool = require("../db/pool");
 const { signToken, adminRequired } = require("../middleware/auth");
 const { createRateLimiter } = require("../middleware/rateLimiter");
+const { enqueueAISummary } = require("../services/summaryQueue");
+const { logAdminAction } = require("../services/audit");
 
 const loginLimiter = createRateLimiter(10, 15);
 
@@ -88,6 +90,85 @@ router.get("/audit", adminRequired, async (req, res, next) => {
         offset: Number.parseInt(offset, 10) || 0,
       },
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/ai-summary-failures", adminRequired, async (req, res, next) => {
+  try {
+    const { status = "failed", limit = 50, offset = 0 } = req.query;
+    const safeLimit = Math.min(Number.parseInt(limit, 10) || 50, 200);
+    const safeOffset = Math.max(Number.parseInt(offset, 10) || 0, 0);
+
+    const result = await pool.query(
+      `SELECT id, project_id, payload, error_message, error_stack, status, created_at, resolved_at
+       FROM ai_summary_job_failures
+       WHERE status = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [status, safeLimit, safeOffset],
+    );
+
+    const countResult = await pool.query(
+      "SELECT COUNT(*) AS total FROM ai_summary_job_failures WHERE status = $1",
+      [status],
+    );
+
+    const rows = result.rows.map(row => ({
+      id: row.id,
+      projectId: row.project_id,
+      payload: row.payload,
+      errorMessage: row.error_message,
+      errorStack: row.error_stack,
+      status: row.status,
+      createdAt: new Date(row.created_at).toISOString(),
+      resolvedAt: row.resolved_at ? new Date(row.resolved_at).toISOString() : null,
+    }));
+
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        total: parseInt(countResult.rows[0].total, 10),
+        limit: safeLimit,
+        offset: safeOffset,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/ai-summary-failures/:id/retry", adminRequired, async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      "SELECT id, project_id, payload, status FROM ai_summary_job_failures WHERE id = $1",
+      [req.params.id],
+    );
+    const failure = result.rows[0];
+    if (!failure) return res.status(404).json({ error: "Failed job not found" });
+    if (failure.status !== "failed") {
+      return res.status(409).json({ error: `Failure already has status '${failure.status}'` });
+    }
+
+    await enqueueAISummary(failure.project_id, failure.payload || {});
+
+    await pool.query(
+      "UPDATE ai_summary_job_failures SET status = 'retried', resolved_at = NOW() WHERE id = $1",
+      [failure.id],
+    );
+
+    logAdminAction({
+      actor: req.admin.sub,
+      action: "project.summary.retry_enqueued",
+      targetType: "project",
+      targetId: failure.project_id,
+      metadata: { failureId: failure.id },
+      ipAddress: req.ip,
+    });
+
+    res.json({ success: true, data: { status: "queued" } });
   } catch (e) {
     next(e);
   }

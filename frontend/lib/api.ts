@@ -381,6 +381,43 @@ export async function confirmProjectRegistration(payload: {
   return data;
 }
 
+// ── Admin: AI Summary Failures ────────────────────────────────────
+export async function adminLogin(username: string, password: string) {
+  const { data } = await api.post<{
+    success: boolean;
+    data: { token: string; refreshToken: string; expiresIn: number };
+  }>("/api/admin/login", { username, password });
+  return data.data;
+}
+
+export interface AISummaryJobFailure {
+  id: string;
+  projectId: string;
+  payload: Record<string, unknown>;
+  errorMessage: string | null;
+  errorStack: string | null;
+  status: string;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export async function fetchAISummaryFailures(token: string) {
+  const { data } = await api.get<{ success: boolean; data: AISummaryJobFailure[] }>(
+    "/api/admin/ai-summary-failures",
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return data.data;
+}
+
+export async function retryAISummaryFailure(token: string, failureId: string) {
+  const { data } = await api.post<{ success: boolean; data: { status: string } }>(
+    `/api/admin/ai-summary-failures/${failureId}/retry`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return data.data;
+}
+
 // ── Update Likes ─────────────────────────────────────────────────
 export async function toggleUpdateLike(updateId: string, donorAddress: string) {
   const { data } = await api.post<{ success: boolean; data: { liked: boolean; likeCount: number } }>(

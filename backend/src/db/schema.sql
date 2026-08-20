@@ -246,3 +246,23 @@ CREATE TABLE IF NOT EXISTS event_store_migration_state (
   migrated_at TIMESTAMPTZ,
   event_count BIGINT     NOT NULL DEFAULT 0
 );
+
+-- Permanently-failed AI summary generation jobs (pg-boss retries exhausted).
+-- Populated from the "ai-summary-dlq" dead-letter queue so a failure is
+-- distinctly visible from a job still retrying in pg-boss's own tables.
+CREATE TABLE IF NOT EXISTS ai_summary_job_failures (
+  id UUID PRIMARY KEY,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  payload JSONB NOT NULL DEFAULT '{}'::JSONB,
+  error_message TEXT,
+  error_stack TEXT,
+  status TEXT NOT NULL DEFAULT 'failed',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_summary_job_failures_status
+  ON ai_summary_job_failures (status);
+
+CREATE INDEX IF NOT EXISTS idx_ai_summary_job_failures_created_at
+  ON ai_summary_job_failures (created_at);
