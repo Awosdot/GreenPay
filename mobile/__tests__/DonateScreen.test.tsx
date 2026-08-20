@@ -9,6 +9,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import axios from 'axios';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { Account, Keypair, Server } from '@stellar/stellar-sdk';
 import { ThemeProvider } from '../app/theme';
 import { DONATION_QUEUE_KEY, enqueueDonation, listQueuedDonations } from '../utils/donationQueue';
@@ -52,9 +53,20 @@ function renderDonateScreen() {
   );
 }
 
+// The expo-secure-store mock's backing object is module-level and outlives
+// any single test (see __mocks__/expo-secure-store.js), so a wallet
+// connected via useWallet() in one test would otherwise still be "connected"
+// in the next.
+function clearWalletStore() {
+  Object.keys((SecureStore as any).__store).forEach(
+    (key) => delete (SecureStore as any).__store[key]
+  );
+}
+
 describe('DonateScreen – biometric auth gate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearWalletStore();
     mockSearchParams = { id: 'proj-1' };
     (axios.get as jest.Mock).mockResolvedValue({ data: { data: [MOCK_PROJECT] } });
     (LocalAuthentication.hasHardwareAsync as jest.Mock).mockResolvedValue(true);
@@ -115,6 +127,10 @@ const DONOR_PUBLIC_KEY = 'GA4JHZX455IELW533547WFB5LV57LLSUJURFFIIYG7AV4HTQNW4W4F
 
 /** Drives the "Connect Wallet" Alert.alert prompt exactly like a user would. */
 async function connectWallet(getByText: any, alertSpy: jest.SpyInstance, publicKey: string) {
+  // useWallet() reads its initial state from AsyncStorage/SecureStore
+  // asynchronously, so the button may still be a loading spinner for a tick
+  // after other awaited assertions (e.g. project data) have already resolved.
+  await waitFor(() => expect(getByText('Connect Wallet')).toBeTruthy());
   fireEvent.press(getByText('Connect Wallet'));
   const call = alertSpy.mock.calls.find((c) => c[0] === 'Connect Wallet');
   const buttons = call?.[2] as Array<{ text: string; onPress?: (input: any) => void }>;
@@ -127,6 +143,7 @@ async function connectWallet(getByText: any, alertSpy: jest.SpyInstance, publicK
 describe('DonateScreen – offline queueing', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
+    clearWalletStore();
     mockSearchParams = { id: 'proj-1' };
     await AsyncStorage.clear();
     (axios.get as jest.Mock).mockResolvedValue({ data: { data: [MOCK_PROJECT] } });
@@ -207,6 +224,7 @@ const REAL_PUBLIC_KEY = REAL_KEYPAIR.publicKey();
 describe('DonateScreen – completing a queued donation ("Complete now")', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
+    clearWalletStore();
     await AsyncStorage.clear();
     mockSearchParams = { id: 'proj-1' };
     (axios.get as jest.Mock).mockResolvedValue({ data: { data: [MOCK_PROJECT] } });

@@ -17,6 +17,7 @@ import {
   updateQueuedDonation,
   QueuedDonation,
 } from '../../utils/donationQueue';
+import { useWallet } from '../../src/hooks/useWallet';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
 const HORIZON_URL = process.env.EXPO_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
