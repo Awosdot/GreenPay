@@ -17,6 +17,9 @@ spec:
         app: backend
     spec:
       schedulerName: default-scheduler
+      # Give the app's SHUTDOWN_TIMEOUT_MS (25s, see backend/src/server.js)
+      # room to finish draining before the kubelet sends SIGKILL.
+      terminationGracePeriodSeconds: 30
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

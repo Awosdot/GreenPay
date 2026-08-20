@@ -16,6 +16,9 @@ spec:
       labels:
         app: backend
     spec:
+      # Give the app's SHUTDOWN_TIMEOUT_MS (25s, see backend/src/server.js)
+      # room to finish draining before the kubelet sends SIGKILL.
+      terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds | default 30 }}
       containers:
         - name: backend
           image: {{ .Values.backend.image }}

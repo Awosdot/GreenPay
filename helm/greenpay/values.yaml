@@ -26,6 +26,9 @@ backend:
   image: greenpay/backend:latest
   replicas: 2
   port: 4000
+  # Must stay above the app's SHUTDOWN_TIMEOUT_MS (25s, see backend/src/server.js)
+  # so a graceful shutdown can finish before the kubelet sends SIGKILL.
+  terminationGracePeriodSeconds: 30
   canary:
     steps:
       initialWeight: 10

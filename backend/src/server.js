@@ -13,13 +13,20 @@ const { runMigrations } = require("./db/migrate");
 const { startTurretsServer } = require("./services/turrets");
 const http = require("http");
 const { Server } = require("socket.io");
-const { startIndexer } = require("./services/indexerService");
+const { startIndexer, stopIndexer } = require("./services/indexerService");
 const { createCorsMiddleware, getAllowedOrigins } = require("./middleware/corsPolicy");
 const { initializeEventSourcing, shutdownEventSourcing } = require("./eventSourcing");
+const pool = require("./db/pool");
+const { createShutdownHandler } = require("./shutdown");
 
 const app  = express();
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
+// Kubernetes sends SIGTERM (not SIGINT) to terminate pods during rolling
+// deploys, HPA scale-down, or node drains — keep this below the pod's
+// terminationGracePeriodSeconds (see k8s/backend.yaml) so the process has
+// time to exit on its own before the kubelet sends SIGKILL.
+const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 25000;
 
 // ── Swagger UI (development) ─────────────────────────────────────────────────
 if (process.env.NODE_ENV !== "production") {
@@ -140,16 +147,23 @@ async function startServer() {
   }
 }
 
+const gracefulShutdown = createShutdownHandler({
+  server,
+  pool,
+  shutdownEventSourcing,
+  stopIndexer,
+  timeoutMs: SHUTDOWN_TIMEOUT_MS,
+});
+
 if (require.main === module) {
   startServer().catch((err) => {
     console.error("[Startup Error]", err.message);
     process.exit(1);
   });
 
-  process.on("SIGINT", async () => {
-    await shutdownEventSourcing();
-    process.exit(0);
-  });
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 }
 
 module.exports = app;
+module.exports.gracefulShutdown = gracefulShutdown;
