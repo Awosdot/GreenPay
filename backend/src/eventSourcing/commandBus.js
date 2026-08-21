@@ -12,11 +12,6 @@ class CommandHandler {
   }
 }
 
-async function getProjectState(projectId) {
-  const result = await pool.query("SELECT * FROM projects WHERE id = $1", [projectId]);
-  return ProjectAggregate.fromState(result.rows[0]);
-}
-
 async function getDonorState(donorAddress) {
   const result = await pool.query("SELECT * FROM donor_stats WHERE public_key = $1", [donorAddress]);
   return DonorAggregate.fromState(result.rows[0]);
@@ -70,8 +65,6 @@ class DonationCommandHandler {
     if (!projectResult.rows[0]) throw new Error("Project not found");
 
     const amount = command.getAmount();
-    const project = await getProjectState(command.payload.projectId);
-    const donor = await getDonorState(command.payload.donorAddress);
 
     const donationEvent = new (require("./events").DonationRecordedEvent)({
       aggregateId: `Donation:${command.getTransactionHash()}`,
@@ -85,12 +78,9 @@ class DonationCommandHandler {
       transactionHash: command.getTransactionHash(),
     });
 
-    project.apply(donationEvent);
-    donor.apply(donationEvent);
-
-    await storeProjectAggregate(pool, command.payload.projectId, project);
-    await storeDonorAggregate(pool, command.payload.donorAddress, donor);
-
+    // raised_xlm / total_donated_xlm are written exclusively by the async
+    // projection dispatch (projections.js) once this event is processed.
+    // Writing them here too was the historical double-counting bug (#368).
     const donationRow = donationEvent.toRow();
     await pool.query(
       "INSERT INTO event_stream (event_id, stream_id, aggregate_type, aggregate_id, event_type, version, aggregate_version, payload, actor, occurred_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)",
@@ -355,7 +345,6 @@ module.exports = {
   CommandHandler,
   execute,
   COMMAND_HANDLERS,
-  getProjectState,
   getDonorState,
   getMatchState,
   getJobState,
