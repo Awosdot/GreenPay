@@ -5,6 +5,7 @@
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
+<<<<<<< HEAD
 import { apiFetch, apiGet, parseApiFetchResponse } from '../../utils/api';
 import {
   getPushToken,
@@ -17,6 +18,12 @@ import {
 import { parseProjectUpdates, type MobileProjectUpdate } from '../../utils/projectUpdates';
 import { useWallet } from '../../src/hooks/useWallet';
 import { useTheme } from '../theme';
+=======
+import axios from 'axios';
+import { getPushToken, followProject, unfollowProject } from '../../utils/notifications';
+>>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
 
 interface ClimateProject {
   id: string;
@@ -66,10 +73,22 @@ export default function ProjectDetailScreen() {
 
   const checkFollowStatus = async (projectId: string, token: string) => {
     try {
+<<<<<<< HEAD
       const response = await apiFetch(`/api/notifications/follows?token=${encodeURIComponent(token)}`);
       const followedProjects = await parseApiFetchResponse<Array<{ id: string }>>(response);
       const isFollowed = followedProjects.some((p) => p.id === projectId);
       setIsFollowing(isFollowed);
+=======
+      // Encode token to protect against unencoded square brackets in query strings
+      const encodedToken = encodeURIComponent(token);
+      const response = await fetch(`${API_URL}/api/notifications/follows?token=${encodedToken}`);
+      const data = await response.json();
+      if (data.success) {
+        const followedProjects = data.data;
+        const isFollowed = followedProjects.some((p: any) => p.id === projectId);
+        setIsFollowing(isFollowed);
+      }
+>>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
     } catch (error) {
       console.error('Error checking follow status:', error);
     }
@@ -77,12 +96,17 @@ export default function ProjectDetailScreen() {
 
   const loadProject = async (projectId: string) => {
     try {
+<<<<<<< HEAD
       const [projectData, updatesData] = await Promise.all([
         apiGet<ClimateProject>(`/api/projects/${projectId}`),
         apiGet<unknown>(`/api/updates/${projectId}`).catch(() => []),
       ]);
       setProject(projectData);
       setProjectUpdates(parseProjectUpdates(updatesData));
+=======
+      const res = await axios.get(`${API_URL}/api/projects/${projectId}`);
+      setProject(res.data.data);
+>>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
     } catch (error) {
       console.error('Error loading project:', error);
     } finally {
@@ -236,16 +260,6 @@ export default function ProjectDetailScreen() {
       >
         <Text style={[styles.donateButtonText, { color: colors.buttonText }]}>🌱 Donate Now</Text>
       </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.monthlyButton, { borderColor: colors.primary }]}
-        onPress={() => router.push(`/donate/${project.id}`)}
-        accessibilityLabel="Set up monthly donation"
-      >
-        <Text style={[styles.monthlyButtonText, { color: colors.primary }]}>
-          📅 Set up monthly giving
-        </Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -396,19 +410,5 @@ const styles = StyleSheet.create({
   donateButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  monthlyButton: {
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 28,
-    marginTop: 0,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 2,
-    backgroundColor: 'transparent',
-  },
-  monthlyButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
   },
 });

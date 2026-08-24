@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /**
  * utils/notifications.ts
  * Push notification setup, permissions, channels, and token lifecycle helpers.
@@ -441,5 +442,47 @@ export function setupNotificationListener(options?: {
       tokenSubscription?.remove();
       appStateSubscription.remove();
     },
+=======
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+
+// Helper to ensure Android Notification Channel exists
+export async function createNotificationChannel() {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
+  }
+}
+
+// Ensure createNotificationChannel() is called inside registerDeviceToken or setupNotificationListener
+export async function registerDeviceToken(walletAddress?: string) {
+  await createNotificationChannel();
+  // ... existing token fetching & backend registration logic ...
+}
+
+export function setupNotificationListener(navigationHandler?: (url: string) => void) {
+  createNotificationChannel();
+  
+  const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+    const data = response.notification.request.content.data;
+    if (data?.url && navigationHandler) {
+      navigationHandler(data.url);
+    }
+  });
+
+  return () => {
+    subscription.remove();
+>>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
   };
+}
+
+// Fix unencoded query string in getFollowedProjects
+export async function getFollowedProjects(token: string) {
+  const encodedToken = encodeURIComponent(token);
+  const response = await fetch(`${API_URL}/followed-projects?token=${encodedToken}`);
+  return response.json();
 }
