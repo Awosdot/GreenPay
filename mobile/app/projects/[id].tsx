@@ -27,8 +27,12 @@ import { getPushToken, followProject, unfollowProject } from '../../utils/notifi
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+<<<<<<< HEAD
 import api from '../../utils/api'; // Adjust path if necessary
 >>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
+=======
+import { apiGet } from '../../utils/api';
+>>>>>>> dc1a3a1 (fix(mobile): correct import paths and align push token registration with tests)
 
 interface Project {
   id: string;
@@ -59,8 +63,8 @@ export default function ProjectDetailScreen() {
       try {
         setLoading(true);
         const encodedId = encodeURIComponent(id);
-        const response = await api.get(`/projects/${encodedId}`);
-        setProject(response.data);
+        const data = await apiGet<Project>(`/projects/${encodedId}`);
+        setProject(data);
       } catch (err: any) {
         setError(err?.message || 'Failed to load project details');
       } finally {

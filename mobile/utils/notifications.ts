@@ -449,10 +449,11 @@ import * as Notifications from 'expo-notifications';
 >>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import api from './api'; // Adjust path to your API client instance if needed
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL } from './api';
 
-// Configure default notification behavior
+const PENDING_REGISTRATION_KEY = 'greenpay:pendingPushRegistration';
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -462,15 +463,9 @@ Notifications.setNotificationHandler({
 });
 
 /**
- * Registers device push token and handles Android channel setup
+ * Requests notification permissions and returns the device's Expo push token.
  */
-export async function registerDeviceToken(): Promise<string | null> {
-  if (!Device.isDevice) {
-    console.warn('Must use physical device for Push Notifications');
-    return null;
-  }
-
-  // Create Android notification channel
+export async function requestPushToken(): Promise<string | null> {
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
@@ -480,7 +475,6 @@ export async function registerDeviceToken(): Promise<string | null> {
     });
   }
 
-  // Request permissions
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
@@ -494,19 +488,33 @@ export async function registerDeviceToken(): Promise<string | null> {
     return null;
   }
 
-  // Obtain token
   const tokenData = await Notifications.getExpoPushTokenAsync();
-  const token = tokenData.data;
+  return tokenData.data;
+}
 
-  // Send to backend with proper URI encoding
+/**
+ * Registers a device push token with the backend. Queues the registration
+ * for retry in AsyncStorage when the request fails so it can be retried later.
+ */
+export async function registerDeviceToken(token: string, walletAddress?: string): Promise<boolean> {
   try {
-    const encodedToken = encodeURIComponent(token);
-    await api.post(`/notifications/register?token=${encodedToken}`);
-  } catch (error) {
-    console.error('Failed to send push token to backend:', error);
-  }
+    const response = await fetch(`${API_URL}/api/notifications/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, platform: Platform.OS, walletAddress }),
+    });
 
-  return token;
+    if (!response.ok) {
+      await AsyncStorage.setItem(PENDING_REGISTRATION_KEY, JSON.stringify({ token, walletAddress }));
+      return false;
+    }
+
+    await AsyncStorage.removeItem(PENDING_REGISTRATION_KEY);
+    return true;
+  } catch (error) {
+    await AsyncStorage.setItem(PENDING_REGISTRATION_KEY, JSON.stringify({ token, walletAddress }));
+    return false;
+  }
 }
 
 /**

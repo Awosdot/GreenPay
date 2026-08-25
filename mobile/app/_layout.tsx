@@ -15,6 +15,7 @@ import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 =======
 import { Stack, useRouter } from 'expo-router';
+<<<<<<< HEAD
 import { ThemeProvider } from '../context/ThemeContext'; // Adjust path if necessary
 import { AppInitProvider } from '../context/AppInitContext'; // Adjust path if necessary
 >>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
@@ -69,6 +70,37 @@ function AppShell() {
 
 =======
 >>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
+=======
+import { ThemeProvider } from './theme';
+import { AppInitProvider, useAppInit } from '../src/context/AppInitContext';
+import { registerDeviceToken, requestPushToken, setupNotificationListener } from '../utils/notifications';
+
+function AppShell() {
+  const router = useRouter();
+  const { walletPublicKey } = useAppInit();
+
+  useEffect(() => {
+    // 1. Request permissions/token and register the device on mount
+    (async () => {
+      const token = await requestPushToken();
+      if (token) {
+        await registerDeviceToken(token, walletPublicKey ?? undefined);
+      }
+    })();
+
+    // 2. Mount response listener and tear down on unmount
+    const removeListener = setupNotificationListener((deepLinkUrl) => {
+      if (deepLinkUrl) {
+        router.push(deepLinkUrl);
+      }
+    });
+
+    return () => {
+      if (removeListener) removeListener();
+    };
+  }, [walletPublicKey]);
+
+>>>>>>> dc1a3a1 (fix(mobile): correct import paths and align push token registration with tests)
   return (
     <ThemeProvider>
       <Stack>
@@ -83,24 +115,6 @@ function AppShell() {
 }
 
 export default function RootLayout() {
-  const router = useRouter();
-
-  useEffect(() => {
-    // 1. Register device token on mount
-    registerDeviceToken();
-
-    // 2. Mount response listener and tear down on unmount
-    const removeListener = setupNotificationListener((deepLinkUrl) => {
-      if (deepLinkUrl) {
-        router.push(deepLinkUrl);
-      }
-    });
-
-    return () => {
-      if (removeListener) removeListener();
-    };
-  }, []);
-
   return (
     <AppInitProvider>
       <AppShell />
