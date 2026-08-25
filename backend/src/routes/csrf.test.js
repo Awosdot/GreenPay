@@ -20,9 +20,9 @@ describe("CSRF protection", () => {
       .expect(403);
 
     expect(res.body.error).toMatchObject({
-  code: "FORBIDDEN",
-  message: expect.stringMatching(/csrf/i),
-});
+      code: "EBADCSRFTOKEN",
+      message: expect.stringMatching(/csrf/i),
+    });
   });
 
   it("allows mutating requests when a valid X-CSRF-Token header is provided", async () => {
