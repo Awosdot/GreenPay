@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 /**
  * utils/notifications.ts
  * Push notification setup, permissions, channels, and token lifecycle helpers.
@@ -444,45 +445,87 @@ export function setupNotificationListener(options?: {
     },
 =======
 import * as Notifications from 'expo-notifications';
+=======
+>>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
 import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import api from './api'; // Adjust path to your API client instance if needed
 
-// Helper to ensure Android Notification Channel exists
-export async function createNotificationChannel() {
+// Configure default notification behavior
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+/**
+ * Registers device push token and handles Android channel setup
+ */
+export async function registerDeviceToken(): Promise<string | null> {
+  if (!Device.isDevice) {
+    console.warn('Must use physical device for Push Notifications');
+    return null;
+  }
+
+  // Create Android notification channel
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
+      name: 'default',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
+      lightColor: '#FF2353',
     });
   }
+
+  // Request permissions
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+
+  if (finalStatus !== 'granted') {
+    console.warn('Failed to get push token for push notification!');
+    return null;
+  }
+
+  // Obtain token
+  const tokenData = await Notifications.getExpoPushTokenAsync();
+  const token = tokenData.data;
+
+  // Send to backend with proper URI encoding
+  try {
+    const encodedToken = encodeURIComponent(token);
+    await api.post(`/notifications/register?token=${encodedToken}`);
+  } catch (error) {
+    console.error('Failed to send push token to backend:', error);
+  }
+
+  return token;
 }
 
-// Ensure createNotificationChannel() is called inside registerDeviceToken or setupNotificationListener
-export async function registerDeviceToken(walletAddress?: string) {
-  await createNotificationChannel();
-  // ... existing token fetching & backend registration logic ...
-}
-
-export function setupNotificationListener(navigationHandler?: (url: string) => void) {
-  createNotificationChannel();
-  
-  const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response.notification.request.content.data;
-    if (data?.url && navigationHandler) {
-      navigationHandler(data.url);
+/**
+ * Sets up notification response listener for deep linking navigation
+ */
+export function setupNotificationListener(
+  onNavigate: (url: string) => void
+): () => void {
+  const subscription = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      const data = response.notification.request.content.data;
+      if (data && typeof data.url === 'string') {
+        onNavigate(data.url);
+      }
     }
-  });
+  );
 
   return () => {
     subscription.remove();
 >>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
   };
-}
-
-// Fix unencoded query string in getFollowedProjects
-export async function getFollowedProjects(token: string) {
-  const encodedToken = encodeURIComponent(token);
-  const response = await fetch(`${API_URL}/followed-projects?token=${encodedToken}`);
-  return response.json();
 }

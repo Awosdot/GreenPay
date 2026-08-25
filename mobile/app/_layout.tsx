@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { useFonts, Lora_700Bold } from '@expo-google-fonts/lora';
 import { useColorScheme } from 'react-native';
 import { ThemeProvider, themes } from './theme';
@@ -12,11 +13,13 @@ import * as Updates from 'expo-updates';
 import Constants from 'expo-constants';
 =======
 import { useRouter } from 'expo-router';
+=======
+import { Stack, useRouter } from 'expo-router';
+import { ThemeProvider } from '../context/ThemeContext'; // Adjust path if necessary
+import { AppInitProvider } from '../context/AppInitContext'; // Adjust path if necessary
+>>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
 import { registerDeviceToken, setupNotificationListener } from '../utils/notifications';
 >>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
-
-// Ensure this path matches where your wallet hook lives in the app
-// e.g., import { useWallet } from '../hooks/useWallet'; 
 
 function AppShell() {
 <<<<<<< HEAD
@@ -69,7 +72,7 @@ function AppShell() {
   return (
     <ThemeProvider>
       <Stack>
-        {/* your existing stack screens */}
+        <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="profile/[address]" options={{ title: 'Donor Profile' }} />
         <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
         <Stack.Screen name="recurring" options={{ title: 'Monthly Giving' }} />
@@ -86,7 +89,7 @@ export default function RootLayout() {
     // 1. Register device token on mount
     registerDeviceToken();
 
-    // 2. Mount response listener and cleanup on unmount
+    // 2. Mount response listener and tear down on unmount
     const removeListener = setupNotificationListener((deepLinkUrl) => {
       if (deepLinkUrl) {
         router.push(deepLinkUrl);

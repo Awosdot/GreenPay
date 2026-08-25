@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /**
  * app/projects/[id].tsx
  * Project detail screen
@@ -22,43 +23,55 @@ import { useTheme } from '../theme';
 import axios from 'axios';
 import { getPushToken, followProject, unfollowProject } from '../../utils/notifications';
 >>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
+=======
+import React, { useEffect, useState } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
+import api from '../../utils/api'; // Adjust path if necessary
+>>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
-
-interface ClimateProject {
+interface Project {
   id: string;
   name: string;
   description: string;
-  category: string;
-  location: string;
-  imageUrl?: string;
-  goalXLM: string;
-  raisedXLM: string;
-  donorCount: number;
-  co2OffsetKg: number;
-  walletAddress: string;
-  status: string;
+  targetAmount: number;
 }
 
 export default function ProjectDetailScreen() {
+<<<<<<< HEAD
   const { colors } = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { publicKey } = useWallet();
   const [project, setProject] = useState<ClimateProject | null>(null);
   const [projectUpdates, setProjectUpdates] = useState<MobileProjectUpdate[]>([]);
+=======
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [project, setProject] = useState<Project | null>(null);
+>>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
   const [loading, setLoading] = useState(true);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [pushToken, setPushToken] = useState<string | null>(null);
-  const [followLoading, setFollowLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (id) {
-      loadProject(id as string);
-      initializeNotifications();
-    }
+    if (!id) return;
+
+    const fetchProjectDetails = async () => {
+      try {
+        setLoading(true);
+        const encodedId = encodeURIComponent(id);
+        const response = await api.get(`/projects/${encodedId}`);
+        setProject(response.data);
+      } catch (err: any) {
+        setError(err?.message || 'Failed to load project details');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProjectDetails();
   }, [id]);
 
+<<<<<<< HEAD
   const initializeNotifications = async () => {
     try {
       const token = await getStoredPushToken();
@@ -168,23 +181,26 @@ export default function ProjectDetailScreen() {
     return Math.min(100, Math.round((r / g) * 100));
   };
 
+=======
+>>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}> 
-        <Text style={[styles.loadingText, { color: colors.secondaryText }]}>Loading project...</Text>
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
       </View>
     );
   }
 
-  if (!project) {
+  if (error || !project) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}> 
-        <Text style={[styles.errorText, { color: colors.secondaryText }]}>Project not found</Text>
+      <View style={styles.center}>
+        <Text style={styles.errorText}>{error || 'Project not found'}</Text>
       </View>
     );
   }
 
   return (
+<<<<<<< HEAD
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}> 
       <View style={[styles.header, { backgroundColor: colors.primary }]}> 
         <Text style={[styles.category, { color: colors.headerText }]}>{project.category}</Text>
@@ -261,114 +277,34 @@ export default function ProjectDetailScreen() {
         <Text style={[styles.donateButtonText, { color: colors.buttonText }]}>🌱 Donate Now</Text>
       </TouchableOpacity>
     </ScrollView>
+=======
+    <View style={styles.container}>
+      <Text style={styles.title}>{project.name}</Text>
+      <Text style={styles.description}>{project.description}</Text>
+      <Text style={styles.target}>Target: ${project.targetAmount}</Text>
+    </View>
+>>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    padding: 16,
+    backgroundColor: '#fff',
   },
-  loadingText: {
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop: 40,
-  },
-  errorText: {
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop: 40,
-  },
-  header: {
-    padding: 24,
-  },
-  category: {
-    fontSize: 14,
-    textTransform: 'uppercase',
-    fontWeight: '600',
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: 8,
-  },
-  location: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  statsCard: {
-    margin: 16,
-    padding: 20,
-    borderRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 1,
-  },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  stat: {
+  center: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  statLabel: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  progressCard: {
-    margin: 16,
-    padding: 20,
-    borderRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 1,
-  },
-  progressTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
-  progressBar: {
-    height: 12,
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-  },
-  progressText: {
-    fontSize: 14,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  goalText: {
-    fontSize: 12,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  descriptionCard: {
-    margin: 16,
-    padding: 20,
-    borderRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 1,
-  },
-  sectionTitle: {
-    fontSize: 16,
+  title: {
+    fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 8,
   },
   description: {
+<<<<<<< HEAD
     fontSize: 14,
     lineHeight: 20,
   },
@@ -398,17 +334,19 @@ const styles = StyleSheet.create({
   },
   followButtonText: {
     color: '#227239',
+=======
+>>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
     fontSize: 16,
-    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
   },
-  donateButton: {
-    padding: 16,
-    margin: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  donateButtonText: {
+  target: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#2e7d32',
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 16,
   },
 });
