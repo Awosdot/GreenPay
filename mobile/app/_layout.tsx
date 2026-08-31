@@ -1,6 +1,15 @@
+/**
+ * app/_layout.tsx
+ * Root layout for the mobile app using expo-router.
+ *
+ * Initialization order (fix for issue #32):
+ *   AppInitProvider boots first → hydrates AsyncStorage state → sets
+ *   isHydrated = true → AppInitContext flushes any queued deep-link URL →
+ *   useDeepLink navigates.  Navigation never fires before state is ready.
+ */
+import { Stack, SplashScreen } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-<<<<<<< HEAD
-<<<<<<< HEAD
 import { useFonts, Lora_700Bold } from '@expo-google-fonts/lora';
 import { useColorScheme } from 'react-native';
 import { ThemeProvider, themes } from './theme';
@@ -11,19 +20,19 @@ import { assertStellarNetworkConfigConsistency } from '../utils/stellarNetwork';
 import { initCrashReporter } from '../utils/crashReporter';
 import * as Updates from 'expo-updates';
 import Constants from 'expo-constants';
-=======
-import { useRouter } from 'expo-router';
-=======
-import { Stack, useRouter } from 'expo-router';
-<<<<<<< HEAD
-import { ThemeProvider } from '../context/ThemeContext'; // Adjust path if necessary
-import { AppInitProvider } from '../context/AppInitContext'; // Adjust path if necessary
->>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
-import { registerDeviceToken, setupNotificationListener } from '../utils/notifications';
->>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
+
+SplashScreen.preventAutoHideAsync();
+import { useWallet } from '../src/hooks/useWallet';
+import { useDeviceIntegrity } from '../utils/useDeviceIntegrity';
+import { SecurityWarningBanner } from '../components/SecurityWarningBanner';
+
+function DeepLinkHandler() {
+  useDeepLink();
+  useRecurringReminders();
+  return null;
+}
 
 function AppShell() {
-<<<<<<< HEAD
   const colorScheme = useColorScheme();
   const themeMode = colorScheme === 'dark' ? 'dark' : 'light';
   const theme = themes[themeMode];
@@ -68,43 +77,28 @@ function AppShell() {
     return null;
   }
 
-=======
->>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
-=======
-import { ThemeProvider } from './theme';
-import { AppInitProvider, useAppInit } from '../src/context/AppInitContext';
-import { registerDeviceToken, requestPushToken, setupNotificationListener } from '../utils/notifications';
-
-function AppShell() {
-  const router = useRouter();
-  const { walletPublicKey } = useAppInit();
-
-  useEffect(() => {
-    // 1. Request permissions/token and register the device on mount
-    (async () => {
-      const token = await requestPushToken();
-      if (token) {
-        await registerDeviceToken(token, walletPublicKey ?? undefined);
-      }
-    })();
-
-    // 2. Mount response listener and tear down on unmount
-    const removeListener = setupNotificationListener((deepLinkUrl) => {
-      if (deepLinkUrl) {
-        router.push(deepLinkUrl);
-      }
-    });
-
-    return () => {
-      if (removeListener) removeListener();
-    };
-  }, [walletPublicKey]);
-
->>>>>>> dc1a3a1 (fix(mobile): correct import paths and align push token registration with tests)
   return (
     <ThemeProvider>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
+      {/* DeepLinkHandler is inside AppInitProvider so useAppInit() resolves */}
+      <DeepLinkHandler />
+      <StatusBar style={theme.statusBarStyle} />
+      {/*
+        Advisory-only warning, shown app-wide once a wallet is connected on a
+        device that looks jailbroken/rooted. Never blocks interaction — see
+        components/SecurityWarningBanner for rationale.
+      */}
+      {isCompromised && publicKey && <SecurityWarningBanner />}
+      <Stack screenOptions={{
+        headerStyle: { backgroundColor: theme.header },
+        headerTintColor: theme.headerText,
+        headerTitleStyle: { fontFamily: 'Lora_700Bold' },
+      }}>
+        <Stack.Screen name="index" options={{ title: 'Home' }} />
+        <Stack.Screen name="projects" options={{ title: 'Projects' }} />
+        <Stack.Screen name="projects/[id]" options={{ title: 'Project Details' }} />
+        <Stack.Screen name="donate/[id]" options={{ title: 'Donate' }} />
+        <Stack.Screen name="scan" options={{ title: 'Scan QR Code', headerShown: false }} />
+        <Stack.Screen name="impact" options={{ title: 'My Impact' }} />
         <Stack.Screen name="profile/[address]" options={{ title: 'Donor Profile' }} />
         <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
         <Stack.Screen name="recurring" options={{ title: 'Monthly Giving' }} />

@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
 /**
  * utils/notifications.ts
  * Push notification setup, permissions, channels, and token lifecycle helpers.
@@ -154,17 +152,17 @@ export async function checkNotificationPermissions(): Promise<NotificationPermis
 export async function requestNotificationPermissions(): Promise<string | null> {
   const { status: existingStatus, canAskAgain } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
-  
+
   if (existingStatus !== 'granted' && canAskAgain !== false) {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
-  
+
   if (finalStatus !== 'granted') {
     console.log('Push notification permission denied by user');
     return null;
   }
-  
+
   return finalStatus;
 }
 
@@ -234,11 +232,11 @@ export async function getPushToken(): Promise<string | null> {
     await setupNotificationChannel();
     const permissionStatus = await requestNotificationPermissions();
     if (!permissionStatus) return null;
-    
+
     const tokenResult = await Notifications.getExpoPushTokenAsync({
       projectId: process.env.EXPO_PUBLIC_PROJECT_ID || '',
     });
-    
+
     const token = tokenResult?.data;
     if (token) {
       await saveStoredPushToken(token);
@@ -259,7 +257,7 @@ export async function registerDeviceToken(
 ): Promise<boolean> {
   try {
     const platform = Platform.OS;
-    
+
     const registered = await postJson('/api/notifications/register', {
       token,
       platform,
@@ -350,7 +348,7 @@ export async function followProject(
     });
 
     if (!followed) return false;
-    
+
     console.log(`Followed project ${projectId}`);
     return true;
   } catch (error) {
@@ -373,7 +371,7 @@ export async function unfollowProject(
     });
 
     if (!unfollowed) return false;
-    
+
     console.log(`Unfollowed project ${projectId}`);
     return true;
   } catch (error) {
@@ -435,7 +433,7 @@ export function setupNotificationListener(options?: {
       retryPendingRegistration();
     }
   });
-  
+
   return {
     remove: () => {
       notificationSubscription.remove();
@@ -443,97 +441,5 @@ export function setupNotificationListener(options?: {
       tokenSubscription?.remove();
       appStateSubscription.remove();
     },
-=======
-import * as Notifications from 'expo-notifications';
-=======
->>>>>>> 04342f4 (fix(mobile): complete device token lifecycle and drop broken imports)
-import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from './api';
-
-const PENDING_REGISTRATION_KEY = 'greenpay:pendingPushRegistration';
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
-/**
- * Requests notification permissions and returns the device's Expo push token.
- */
-export async function requestPushToken(): Promise<string | null> {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF2353',
-    });
-  }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') {
-    console.warn('Failed to get push token for push notification!');
-    return null;
-  }
-
-  const tokenData = await Notifications.getExpoPushTokenAsync();
-  return tokenData.data;
-}
-
-/**
- * Registers a device push token with the backend. Queues the registration
- * for retry in AsyncStorage when the request fails so it can be retried later.
- */
-export async function registerDeviceToken(token: string, walletAddress?: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_URL}/api/notifications/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, platform: Platform.OS, walletAddress }),
-    });
-
-    if (!response.ok) {
-      await AsyncStorage.setItem(PENDING_REGISTRATION_KEY, JSON.stringify({ token, walletAddress }));
-      return false;
-    }
-
-    await AsyncStorage.removeItem(PENDING_REGISTRATION_KEY);
-    return true;
-  } catch (error) {
-    await AsyncStorage.setItem(PENDING_REGISTRATION_KEY, JSON.stringify({ token, walletAddress }));
-    return false;
-  }
-}
-
-/**
- * Sets up notification response listener for deep linking navigation
- */
-export function setupNotificationListener(
-  onNavigate: (url: string) => void
-): () => void {
-  const subscription = Notifications.addNotificationResponseReceivedListener(
-    (response) => {
-      const data = response.notification.request.content.data;
-      if (data && typeof data.url === 'string') {
-        onNavigate(data.url);
-      }
-    }
-  );
-
-  return () => {
-    subscription.remove();
->>>>>>> 39eada5 (fix(mobile): register device token lifecycle and encode query tokens (#363))
   };
 }
