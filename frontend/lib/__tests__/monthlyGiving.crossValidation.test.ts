@@ -1,8 +1,6 @@
 import fc from "fast-check";
 import { formatInTimeZone } from "date-fns-tz";
 import * as frontendSchedule from "@/lib/monthlyGiving";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const backendSchedule = require("../../../backend/src/utils/recurringSchedule.js");
 
 /**
  * True cross-validation: both engines are loaded into the SAME test process
@@ -15,7 +13,23 @@ const backendSchedule = require("../../../backend/src/utils/recurringSchedule.js
  * in the same direction, those tests can still pass. Here there is no
  * hand-typed "expected" value at all for most cases: the backend's output
  * IS the expected value the frontend is checked against, and vice versa.
+ *
+ * The backend module lives in a sibling workspace (backend/) that isn't
+ * guaranteed to be present when frontend/ is built or tested in isolation
+ * (e.g. the frontend Docker image's build context only includes frontend/,
+ * shared/, and config/). Load it defensively so an isolated build/test run
+ * skips this suite instead of crashing.
  */
+function loadBackendSchedule() {
+  try {
+    return require("../../../backend/src/utils/recurringSchedule.js");
+  } catch {
+    return null;
+  }
+}
+
+const backendSchedule = loadBackendSchedule();
+const describeCrossValidation = backendSchedule ? describe : describe.skip;
 
 const TIME_ZONES = ["UTC", "America/New_York", "Europe/London", "Asia/Kolkata"];
 
@@ -26,7 +40,7 @@ function zonedYearMonthDay(iso: string, timeZone: string) {
   return { year, month: month - 1, day };
 }
 
-describe("cross-validation: frontend/lib/monthlyGiving.ts vs backend/src/utils/recurringSchedule.js", () => {
+describeCrossValidation("cross-validation: frontend/lib/monthlyGiving.ts vs backend/src/utils/recurringSchedule.js", () => {
   test("expose identical constants", () => {
     expect(frontendSchedule.CHARGE_LOCAL_HOUR).toBe(backendSchedule.CHARGE_LOCAL_HOUR);
     expect(frontendSchedule.DEFAULT_TIME_ZONE).toBe(backendSchedule.DEFAULT_TIME_ZONE);
