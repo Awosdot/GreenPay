@@ -52,10 +52,14 @@
     "GHSA-7r86-cg39-jmmj",
     "GHSA-23c5-xmqv-rm74",
 
-    // @stellar/stellar-sdk@12.x bundles a vulnerable `toml` version; the fix
-    // ships only in stellar-sdk@17.x, a breaking major-version upgrade out
-    // of scope for this CI-hygiene change. Flagged for a maintainer-led
-    // Stellar SDK migration.
+    // browserslist is bundled inside Next.js / PostCSS dependency tree.
+    // Resolved by the same Next 16 upgrade as above.
+    "GHSA-73wf-gq98-2v4g",
+    "GHSA-c83g-rgw3-j3cx",
+
+    // @stellar/stellar-sdk@12.x transitively depends on toml <= 4.1.2.
+    // The available fix ships in @stellar/stellar-sdk@17.x, which is a
+    // breaking major-version upgrade across the workspace.
     "GHSA-82x6-q7mm-w9cf",
     "GHSA-v5mp-jgw5-2x6j"
   ]
