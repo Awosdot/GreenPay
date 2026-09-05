@@ -1,0 +1,19 @@
+{
+  // CI security gate for `npm audit` findings. Fails the build on any high
+  // or critical advisory that isn't explicitly allowlisted below.
+  //
+  // Every entry in `allowlist` is a triaged, currently-unfixable-without-a-
+  // breaking-change finding. Adding an ID here is not a blanket bypass: each
+  // one needs its own comment explaining why it isn't fixed yet. Do not add
+  // an entry without a reason, and remove entries once the real fix lands.
+  "high": true,
+  "package-manager": "npm",
+  "allowlist": [
+    // @stellar/stellar-sdk@12.x bundles a vulnerable `toml` version; the fix
+    // ships only in stellar-sdk@17.x, a breaking major-version upgrade out
+    // of scope for this CI-hygiene change. Flagged for a maintainer-led
+    // Stellar SDK migration.
+    "GHSA-82x6-q7mm-w9cf",
+    "GHSA-v5mp-jgw5-2x6j"
+  ]
+}
